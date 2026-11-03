@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
 import {
-  initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
+  initializeFirestore, connectFirestoreEmulator, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
 } from 'firebase/firestore';
 
 const env = import.meta.env;
@@ -28,5 +28,10 @@ if (configured) {
     console.warn('Offline storage not available, using memory cache', e);
     db = initializeFirestore(app, { localCache: memoryLocalCache() });
   }
+}
+// Dev/testing only: VITE_USE_EMULATOR=true talks to local Firebase emulators instead of the real project.
+if (configured && env.VITE_USE_EMULATOR === 'true') {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
 }
 export { app, auth, db };

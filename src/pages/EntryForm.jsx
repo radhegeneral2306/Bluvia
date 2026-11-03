@@ -17,6 +17,16 @@ const GROUPS = {
 const groupOf = (type) => Object.keys(GROUPS).find((g) => GROUPS[g].types.includes(type));
 const LABEL = { jarReturn: 'Jar Return', jarGiven: 'Jar Given', depositTaken: 'Deposit Taken', depositRefund: 'Refund', depositAdjust: 'Adjust vs dues' };
 
+/** Default jar type = the one this party holds the most of (so Jar Return is one-tap for the common case). */
+function bestJar(party, jarTypes, fallback) {
+  let best = null;
+  for (const j of jarTypes) {
+    const n = (party?.jarBalance || {})[j.id] || 0;
+    if (j.active !== false && n > 0 && (!best || n > best.n)) best = { id: j.id, n };
+  }
+  return best ? best.id : fallback;
+}
+
 export default function EntryForm() {
   const { kind, id } = useParams();
   const [sp] = useSearchParams();
@@ -42,7 +52,7 @@ export default function EntryForm() {
         setF({
           type: first, partyId: sp.get('party') || '', dateKey: todayKey(), note: '', amount: 0, qty: 0, jarQty: 0, amountSign: 1,
           mode: settings.paymentModes?.[0] || '', reference: '',
-          jarTypeId: jarTypes.find((j) => j.active !== false)?.id || '',
+          jarTypeId: bestJar(partyMap[sp.get('party')], jarTypes, jarTypes.find((j) => j.active !== false)?.id || ''),
         });
       }
     })();
@@ -102,7 +112,7 @@ export default function EntryForm() {
     <Page title={`${old ? 'Edit ' : ''}${GROUPS[group].title}`} back>
       {tabs && <Tabs tabs={tabs} value={f.type} onChange={(v) => set('type', v)} />}
       <div className="card p-4 space-y-3">
-        <Field label="Party"><PartyPicker value={f.partyId} onChange={(v) => upd({ partyId: v })} /></Field>
+        <Field label="Party"><PartyPicker value={f.partyId} onChange={(v) => upd(group === 'jar' && !old ? { partyId: v, jarTypeId: bestJar(partyMap[v], jarTypes, f.jarTypeId) } : { partyId: v })} /></Field>
         {party && (
           <div className="text-sm bg-slate-50 rounded-xl p-2 flex justify-between">
             <span>Baaki: <b>{money(party.outstanding || 0)}</b></span>

@@ -26,7 +26,7 @@ export default function JarReport() {
   }, [rows, types]);
 
   const th = (key, label) => (
-    <th className="px-2 py-2 text-right cursor-pointer select-none whitespace-nowrap" onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : 1 }))}>
+    <th key={key} className="px-2 py-2 text-right cursor-pointer select-none whitespace-nowrap" onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : 1 }))}>
       {label}{sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}
     </th>
   );

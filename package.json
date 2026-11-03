@@ -28,5 +28,9 @@
     "vite-plugin-pwa": "^2.0.0",
     "vitest": "^5.1.0",
     "workbox-window": "^7.4.1"
-  }
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "description": "Bluvia Pure Drinking Water - billing, party ledger, jar & deposit tracking PWA"
 }

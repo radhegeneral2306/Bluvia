@@ -65,7 +65,7 @@ function writeGlobal(w, g) {
 // ---------- settings / masters ----------
 export const DEFAULT_SETTINGS = {
   businessName: 'Bluvia Pure Drinking Water', address: '', phone: '', billPrefix: 'BLV-', nextBillNo: 1,
-  footerNote: 'Thank you for your business!', paymentModes: ['Cash', 'UPI', 'Bank'], currency: '₹',
+  footerNote: 'Thank you for your business!', paymentModes: ['Cash', 'UPI', 'Bank'], currency: '₹', countryCode: '91',
 };
 
 export async function seedDefaults() {
@@ -99,7 +99,7 @@ export async function createParty(data) {
 }
 export async function updateParty(id, oldP, data) {
   const b = writeBatch(db);
-  b.set(doc(db, 'parties', id), { ...data, updatedAt: serverTimestamp() }, { merge: true });
+  b.update(doc(db, 'parties', id), { ...data, updatedAt: serverTimestamp() }); // update() replaces nested maps (jarRates etc.)
   const e = openingDelta(oldP, data);
   if (e.outstanding || e.deposit || Object.keys(e.jars).length) {
     b.set(doc(db, 'parties', id), partyDelta(e), { merge: true });

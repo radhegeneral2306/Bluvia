@@ -28,7 +28,7 @@ export default function Settings() {
     try {
       await saveSettings({
         businessName: f.businessName.trim(), address: f.address || '', phone: f.phone || '', billPrefix: f.billPrefix || '',
-        footerNote: f.footerNote || '', currency: f.currency || '₹', paymentModes: f.paymentModes,
+        footerNote: f.footerNote || '', currency: f.currency || '₹', countryCode: (f.countryCode || '').replace(/\D/g, ''), paymentModes: f.paymentModes,
         nextBillNo: Math.max(1, parseInt(f.nextBillNo, 10) || 1),
       });
       toast('Settings save ho gayi');
@@ -48,7 +48,10 @@ export default function Settings() {
         <Field label="Business name"><input className="input" value={f.businessName || ''} onChange={set('businessName')} /></Field>
         <Field label="Address"><textarea className="input !py-2" rows={2} value={f.address || ''} onChange={set('address')} /></Field>
         <Field label="Phone"><input className="input" inputMode="tel" value={f.phone || ''} onChange={set('phone')} /></Field>
-        <Field label="Currency symbol"><input className="input" value={f.currency || ''} onChange={set('currency')} /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Currency symbol"><input className="input" value={f.currency || ''} onChange={set('currency')} /></Field>
+          <Field label="Phone country code" hint="WhatsApp ke liye (India = 91)"><input className="input" inputMode="numeric" value={f.countryCode || ''} onChange={set('countryCode')} /></Field>
+        </div>
       </div>
       <div className="card p-4 space-y-3">
         <h2 className="font-bold">Bill</h2>

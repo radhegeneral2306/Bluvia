@@ -32,5 +32,5 @@ export default defineConfig({
     }),
   ],
   build: { chunkSizeWarningLimit: 900 },
-  test: { environment: 'node', include: ['tests/**/*.test.js'] },
+  test: { environment: 'node', include: ['tests/*.test.js'] },
 });

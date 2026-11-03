@@ -20,17 +20,21 @@ export async function computeRecalc(onProgress = () => {}) {
   return { calc, diffs, parties, txnCount: txns.length, dailyKeys: Object.keys(daily) };
 }
 
-export async function applyRecalc({ calc, dailyKeys }) {
+/** Writes ONLY the documents that actually differ (saves free-plan writes). */
+export async function applyRecalc({ calc, diffs, dailyKeys }) {
+  const partyIds = new Set(diffs.filter((d) => d.scope === 'party').map((d) => d.id));
+  const dailyDiff = new Set(diffs.filter((d) => d.scope === 'daily').map((d) => d.id));
   const ops = [];
-  for (const [id, b] of Object.entries(calc.balances)) {
+  for (const id of partyIds) {
+    const b = calc.balances[id];
     ops.push((w) => w.update(doc(db, 'parties', id), { outstanding: b.outstanding, depositBalance: b.depositBalance, jarBalance: b.jarBalance }));
   }
-  ops.push((w) => w.set(doc(db, 'stats', 'summary'), calc.summary));
-  const all = new Set([...Object.keys(calc.daily), ...dailyKeys]);
-  for (const k of all) {
+  if (diffs.some((d) => d.scope === 'summary')) ops.push((w) => w.set(doc(db, 'stats', 'summary'), calc.summary));
+  for (const k of dailyDiff) {
     const d = calc.daily[k] || { sales: 0, collection: 0, billsCount: 0 };
     ops.push((w) => w.set(doc(db, 'stats', `daily_${k}`), { dateKey: k, ...d }));
   }
+  void dailyKeys;
   for (let i = 0; i < ops.length; i += 400) {
     const b = writeBatch(db);
     ops.slice(i, i + 400).forEach((op) => op(b));

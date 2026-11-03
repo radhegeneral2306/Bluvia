@@ -1,0 +1,63 @@
+rules_version = '2';
+// Deny everything by default. Only the owner account(s) listed in isOwner() can read/write.
+// Put your own Firebase Auth UID inside the quotes below (see SETUP.md). For more users: ['UID1', 'UID2']
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner() {
+      return request.auth != null && request.auth.uid in ['OWNER_UID'];
+    }
+    function d() { return request.resource.data; }
+    // field is absent OR is a number
+    function numOrAbsent(f) { return !(f in d()) || d()[f] is number; }
+    function strOrAbsent(f) { return !(f in d()) || d()[f] is string; }
+
+    match /settings/{id} {
+      allow read: if isOwner();
+      allow write: if isOwner()
+        && numOrAbsent('nextBillNo')
+        && strOrAbsent('businessName') && strOrAbsent('billPrefix') && strOrAbsent('currency');
+    }
+
+    match /jarTypes/{id} {
+      allow read: if isOwner();
+      allow write: if isOwner() && numOrAbsent('defaultRate') && numOrAbsent('defaultDeposit') && strOrAbsent('name');
+    }
+
+    match /items/{id} {
+      allow read: if isOwner();
+      allow write: if isOwner() && numOrAbsent('defaultRate') && strOrAbsent('name');
+    }
+
+    match /parties/{id} {
+      allow read: if isOwner();
+      allow write: if isOwner()
+        && strOrAbsent('name')
+        && numOrAbsent('openingBalance') && numOrAbsent('openingDeposit')
+        && numOrAbsent('outstanding') && numOrAbsent('depositBalance');
+    }
+
+    match /transactions/{id} {
+      allow read: if isOwner();
+      allow write: if isOwner()
+        && d().type in ['bill', 'receipt', 'jarReturn', 'jarGiven', 'depositTaken', 'depositRefund', 'depositAdjust', 'adjustment']
+        && d().partyId is string
+        && d().dateKey is string
+        && numOrAbsent('amount') && numOrAbsent('qty') && numOrAbsent('total') && numOrAbsent('subTotal')
+        && numOrAbsent('discount') && numOrAbsent('extraCharge')
+        && numOrAbsent('prevOutstanding') && numOrAbsent('newOutstanding') && numOrAbsent('depositCollectedInBill');
+    }
+
+    match /stats/{id} {
+      allow read: if isOwner();
+      allow write: if isOwner()
+        && numOrAbsent('totalOutstanding') && numOrAbsent('totalDepositHeld')
+        && numOrAbsent('sales') && numOrAbsent('collection') && numOrAbsent('billsCount');
+    }
+
+    // everything else: denied
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

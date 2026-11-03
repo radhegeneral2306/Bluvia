@@ -3,6 +3,7 @@ import { useStore } from '../data/store.jsx';
 import { Page, useToast } from '../components/ui.jsx';
 import { exportAll, downloadJson, downloadExcel, validateBackup, restoreAll, markBackupDone } from '../lib/backup.js';
 import { dateKeyOf } from '../lib/dates.js';
+import { computeRecalc, applyRecalc } from '../lib/recalcDb.js';
 
 export default function Backup() {
   const { settings, online } = useStore();
@@ -32,11 +33,14 @@ export default function Backup() {
     } catch (ex) { toast(ex.message || 'File padh nahi payi', 'err'); }
   }
   async function doRestore() {
-    if (!window.confirm('PAKKA? Backup ke documents Firestore mein wapas likhe jayenge (same ID wale overwrite honge). Iske baad "Recalculate balances" chalana behtar hai.')) return;
+    if (!window.confirm('PAKKA? Backup ke documents Firestore mein wapas likhe jayenge (same ID wale overwrite honge). Bill number counter bhi backup wala ho jayega. Restore ke baad balances apne aap recalculate honge (reads lagenge).')) return;
     setBusy('Restore ho raha hai…');
     try {
       const n = await restoreAll(pending.obj, (a, b) => setBusy(`Restore ${a}/${b}…`));
-      toast(`${n} records restore ho gaye`); setPending(null);
+      setBusy('Balances dobara check ho rahe hain…');
+      const rc = await computeRecalc();
+      if (rc.diffs.length) await applyRecalc(rc);
+      toast(`${n} records restore ho gaye; balances theek kiye`); setPending(null);
     } catch (e) { toast(`Restore fail: ${e.message}`, 'err', 8000); } finally { setBusy(''); }
   }
 

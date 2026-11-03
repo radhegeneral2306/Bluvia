@@ -36,8 +36,8 @@ export async function commitSafe(promise) {
 }
 
 // ---------- plan -> firestore increments ----------
-function partyDelta(e) {
-  const d = { lastTxnAt: serverTimestamp() };
+function partyDelta(e, touch = true) {
+  const d = touch ? { lastTxnAt: serverTimestamp() } : {};
   if (e.outstanding) d.outstanding = increment(e.outstanding);
   if (e.deposit) d.depositBalance = increment(e.deposit);
   const jars = Object.entries(e.jars);
@@ -69,7 +69,9 @@ export const DEFAULT_SETTINGS = {
 };
 
 export async function seedDefaults() {
-  const b = writeBatch(db);
+  await runTransaction(db, async (b) => {
+  const existing = await b.get(doc(db, 'settings', 'main'));
+  if (existing.exists()) return; // another device already seeded
   b.set(doc(db, 'settings', 'main'), { ...DEFAULT_SETTINGS, createdAt: serverTimestamp() });
   const j20 = doc(collection(db, 'jarTypes')), j10 = doc(collection(db, 'jarTypes'));
   b.set(j20, { name: '20L Jar', defaultRate: 4000, defaultDeposit: 20000, active: true });
@@ -77,13 +79,14 @@ export async function seedDefaults() {
   b.set(doc(collection(db, 'items')), { name: '20L Jar Water', unit: 'jar', defaultRate: 4000, jarTypeId: j20.id, active: true });
   b.set(doc(collection(db, 'items')), { name: '10L Jar Water', unit: 'jar', defaultRate: 2500, jarTypeId: j10.id, active: true });
   b.set(doc(db, 'stats', 'summary'), { totalOutstanding: 0, totalJarsOut: {}, totalDepositHeld: 0 });
-  await b.commit();
+  });
 }
 export const saveSettings = (patch) => commitSafe(setDoc(doc(db, 'settings', 'main'), patch, { merge: true }));
 
 export function saveMaster(coll, id, data) {
   const ref = id ? doc(db, coll, id) : doc(collection(db, coll));
-  return commitSafe(setDoc(ref, data, { merge: true }));
+  const clean = Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined));
+  return commitSafe(setDoc(ref, clean, { merge: true }));
 }
 
 // ---------- parties ----------
@@ -102,7 +105,7 @@ export async function updateParty(id, oldP, data) {
   b.update(doc(db, 'parties', id), { ...data, updatedAt: serverTimestamp() }); // update() replaces nested maps (jarRates etc.)
   const e = openingDelta(oldP, data);
   if (e.outstanding || e.deposit || Object.keys(e.jars).length) {
-    b.set(doc(db, 'parties', id), partyDelta(e), { merge: true });
+    b.set(doc(db, 'parties', id), partyDelta(e, false), { merge: true });
     writeGlobal(b, e);
   }
   // NOTE: second set on same doc inside one batch is fine: writes apply in order.
@@ -165,8 +168,20 @@ export async function createBill(input) {
   });
 }
 
+/** Re-read the entry from the server (when online) so a stale form can never double-apply a delta. */
+async function fresh(oldT, { allowDeleted = false } = {}) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return oldT;
+  const snap = await getDoc(doc(db, 'transactions', oldT.id));
+  addReads(1);
+  if (!snap.exists()) throw new Error('Yeh entry ab exist nahi karti.');
+  const cur = withId(snap);
+  if (!allowDeleted && cur.deleted) throw new Error('Yeh entry kahin aur se delete ho chuki hai. Page refresh karo.');
+  return cur;
+}
+
 /** Edit any transaction: only the delta between old and new effect is applied. */
-export async function updateTxn(oldT, patch) {
+export async function updateTxn(oldT0, patch) {
+  const oldT = await fresh(oldT0);
   const newT = { ...oldT, ...patch };
   const b = writeBatch(db);
   const data = { ...patch, updatedAt: serverTimestamp() };
@@ -176,13 +191,16 @@ export async function updateTxn(oldT, patch) {
   writePlan(b, planChange(oldT, newT));
   return commitSafe(b.commit());
 }
-export async function softDeleteTxn(oldT) {
+export async function softDeleteTxn(oldT0) {
+  const oldT = await fresh(oldT0);
   const b = writeBatch(db);
   b.update(doc(db, 'transactions', oldT.id), { deleted: true, deletedAt: serverTimestamp(), updatedAt: serverTimestamp() });
   writePlan(b, planChange(oldT, { ...oldT, deleted: true }));
   return commitSafe(b.commit());
 }
-export async function restoreTxn(oldT) {
+export async function restoreTxn(oldT0) {
+  const oldT = await fresh(oldT0, { allowDeleted: true });
+  if (!oldT.deleted) throw new Error('Yeh entry pehle se active hai.');
   const b = writeBatch(db);
   b.update(doc(db, 'transactions', oldT.id), { deleted: false, updatedAt: serverTimestamp() });
   writePlan(b, planChange({ ...oldT, deleted: true }, { ...oldT, deleted: false }));

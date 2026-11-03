@@ -43,6 +43,9 @@ service cloud.firestore {
         && d().type in ['bill', 'receipt', 'jarReturn', 'jarGiven', 'depositTaken', 'depositRefund', 'depositAdjust', 'adjustment']
         && d().partyId is string
         && d().dateKey is string
+        && (d().type != 'bill' || d().total is number)
+        && (!(d().type in ['receipt', 'depositTaken', 'depositRefund', 'depositAdjust', 'adjustment']) || d().amount is number)
+        && (!(d().type in ['jarReturn', 'jarGiven']) || d().qty is number)
         && numOrAbsent('amount') && numOrAbsent('qty') && numOrAbsent('total') && numOrAbsent('subTotal')
         && numOrAbsent('discount') && numOrAbsent('extraCharge')
         && numOrAbsent('prevOutstanding') && numOrAbsent('newOutstanding') && numOrAbsent('depositCollectedInBill');

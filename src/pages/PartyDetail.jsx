@@ -90,10 +90,10 @@ export default function PartyDetail() {
       </div>
 
       <div className="grid grid-cols-4 gap-2">
-        <Link to={q('/bill/new')} className="btn btn-primary !px-1 text-sm">🧾 Bill</Link>
-        <Link to={q('/entry/new/receipt')} className="btn !px-1 text-sm">💵 Receipt</Link>
-        <Link to={q('/entry/new/jar')} className="btn !px-1 text-sm">🫙 Jar</Link>
-        <Link to={q('/entry/new/deposit')} className="btn !px-1 text-sm">🏦 Deposit</Link>
+        <Link to={q('/bill/new')} className="btn btn-primary !px-1 text-xs">🧾 Bill</Link>
+        <Link to={q('/entry/new/receipt')} className="btn !px-1 text-xs">💵 Receipt</Link>
+        <Link to={q('/entry/new/jar')} className="btn !px-1 text-xs">🫙 Jar</Link>
+        <Link to={q('/entry/new/deposit')} className="btn !px-1 text-xs">🏦 Deposit</Link>
       </div>
       <div className="grid grid-cols-3 gap-2">
         <button className="btn btn-sm" onClick={() => setStmtOpen(true)}>📤 Statement</button>

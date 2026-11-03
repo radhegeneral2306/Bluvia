@@ -85,7 +85,7 @@ export default function BillForm() {
   }
 
   async function save() {
-    if (!f.partyId) return toast('Party chuno', 'err');
+    if (!f.partyId || !party) return toast('Party chuno', 'err');
     if (!built.length) return toast('Kam se kam ek item aur qty daalo', 'err');
     if (total < 0) return toast('Total negative nahi ho sakta (discount zyada hai)', 'err');
     const bill = {
@@ -97,8 +97,8 @@ export default function BillForm() {
     setBusy(true);
     try {
       if (old) {
-        await updateTxn(old, bill);
-        toast('Bill update ho gaya');
+        const st = await updateTxn(old, bill);
+        toast(st === 'queued' ? 'Phone par save hua — internet aate hi sync hoga' : 'Bill update ho gaya', st === 'queued' ? 'warn' : 'ok');
         setSaved({ ...old, ...bill, newOutstanding: (old.prevOutstanding || 0) + total });
       } else {
         const r = await createBill({
@@ -136,10 +136,10 @@ export default function BillForm() {
                 </select>
                 {f.lines.length > 1 && <button className="btn btn-sm !min-h-[48px]" onClick={() => setF({ ...f, lines: f.lines.filter((x) => x.key !== l.key) })}>🗑</button>}
               </div>
-              <div className="grid grid-cols-3 gap-2 items-end">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 items-end">
                 <Field label={`Qty${it?.unit ? ` (${it.unit})` : ''}`}><QtyInput integer={isJar} value={l.qty} onChange={(v) => setLine(l.key, { qty: v })} /></Field>
                 <Field label="Rate"><MoneyInput value={l.rate} onChange={(v) => setLine(l.key, { rate: v, rateTouched: true })} /></Field>
-                <div className="text-right pb-3"><div className="label">Amount</div><b>{money(lineAmount(l.qty, l.rate))}</b></div>
+                <div className="text-right pb-3 col-span-2 sm:col-span-1"><div className="label">Amount</div><b>{money(lineAmount(l.qty, l.rate))}</b></div>
               </div>
               {isJar && (
                 <label className="flex items-center gap-3 min-h-[40px] text-sm">

@@ -27,7 +27,7 @@ export default function Settings() {
     setBusy(true);
     try {
       await saveSettings({
-        businessName: f.businessName.trim(), address: f.address || '', phone: f.phone || '', billPrefix: f.billPrefix || '',
+        businessName: f.businessName.trim(), managerName: f.managerName || '', invoiceFor: f.invoiceFor || '', showDuesOnPdf: f.showDuesOnPdf !== false, billNoPad: Math.max(0, parseInt(f.billNoPad, 10) || 0), address: f.address || '', phone: f.phone || '', billPrefix: f.billPrefix || '',
         footerNote: f.footerNote || '', currency: f.currency || '₹', countryCode: (f.countryCode || '').replace(/\D/g, ''), paymentModes: f.paymentModes,
         nextBillNo: Math.max(1, parseInt(f.nextBillNo, 10) || 1),
       });
@@ -46,7 +46,8 @@ export default function Settings() {
       <div className="card p-4 space-y-3">
         <h2 className="font-bold">Business details</h2>
         <Field label="Business name"><input className="input" value={f.businessName || ''} onChange={set('businessName')} /></Field>
-        <Field label="Address"><textarea className="input !py-2" rows={2} value={f.address || ''} onChange={set('address')} /></Field>
+        <Field label="Manager / contact name" hint="Invoice ke top par 'Manager: …' line mein aayega"><input className="input" value={f.managerName || ''} onChange={set('managerName')} /></Field>
+        <Field label="Address" hint="Har line alag likho — invoice mein waisi hi dikhegi"><textarea className="input !py-2" rows={2} value={f.address || ''} onChange={set('address')} /></Field>
         <Field label="Phone"><input className="input" inputMode="tel" value={f.phone || ''} onChange={set('phone')} /></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Currency symbol"><input className="input" value={f.currency || ''} onChange={set('currency')} /></Field>
@@ -59,6 +60,9 @@ export default function Settings() {
           <Field label="Bill prefix"><input className="input" value={f.billPrefix || ''} onChange={set('billPrefix')} /></Field>
           <Field label="Next bill number" hint="Sirf tab badlo jab zaroori ho"><input className="input" inputMode="numeric" value={f.nextBillNo ?? 1} onChange={set('nextBillNo')} /></Field>
         </div>
+        <Field label="Bill number digits" hint="5 = 00104 jaisa. 0 = koi padding nahi"><input className="input" inputMode="numeric" value={f.billNoPad ?? 0} onChange={set('billNoPad')} /></Field>
+        <Field label="Invoice 'FOR' text (default)" hint="Har bill par badal sakte ho"><input className="input" value={f.invoiceFor || ''} onChange={set('invoiceFor')} /></Field>
+        <label className="flex items-center gap-3 min-h-[44px] text-sm"><input type="checkbox" className="w-5 h-5" checked={f.showDuesOnPdf !== false} onChange={(e) => setF({ ...f, showDuesOnPdf: e.target.checked })} /> Invoice par purana baaki / total baaki line dikhao</label>
         <Field label="Bill footer note"><textarea className="input !py-2" rows={2} value={f.footerNote || ''} onChange={set('footerNote')} /></Field>
       </div>
       <div className="card p-4 space-y-3">

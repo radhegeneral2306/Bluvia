@@ -176,6 +176,7 @@ Ledger / bills list tez aur sasti rakhne ke liye 3 "composite index" chahiye.
 3. Pehli baar app khud kuch **default** cheezein bana degi: 20L Jar, 10L Jar, 2 items, payment modes (Cash/UPI/Bank). Sab **edit/delete** ho sakte hain.
 4. **More → Settings** mein jao aur apna **business name, address, phone, bill prefix, footer note** bharo → **Save settings**.
 5. **More → Jar Types & Items** mein apne rates aur deposit set karo.
+6. **Invoice PDF ke columns (ND CD NR CR):** Jar Types mein har jar type ko ek **PDF short code** do. Jaise "Normal Jar" → `N`, "Cold Jar" → `C`. PDF mein columns `ND CD` (Delivered) aur `NR CR` (Returned) ban jayenge. Settings mein **Manager name**, **Address** (har line alag), **Phone**, **Bill number digits = 5**, **Bill prefix** khali rakho aur **Next bill number** apne hisaab se (jaise 104) set karo. Footer note: `THANK YOU FOR YOUR BUSINESS!`.
 
 ---
 

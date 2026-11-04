@@ -7,13 +7,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'prompt',
-      includeAssets: ['icons/*.png', 'icons/*.svg'],
+      includeAssets: ['icons/*.png', 'logo.jpg', 'favicon.png'],
       manifest: {
         name: 'Bluvia Pure Drinking Water',
         short_name: 'Bluvia',
         description: 'Billing, party ledger, jar and deposit tracking',
-        theme_color: '#0f74c4',
-        background_color: '#ffffff',
+        theme_color: '#0097b2',
+        background_color: '#0097b2',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',

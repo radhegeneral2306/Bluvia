@@ -60,7 +60,7 @@ describe('Bluvia against Firestore emulator', () => {
       subTotal: 20000, discount: 0, extraCharge: 0, total: 20000, note: '', depositAmount: 100000, depositJarTypeId: jar20,
     });
     billId = r.id; billNo = r.billNo;
-    expect(billNo).toBe('BLV-1');
+    expect(billNo).toBe('00001');
     expect(r.prevOutstanding).toBe(100000);
     expect((await get('settings', 'main')).nextBillNo).toBe(2);
     const p = await get('parties', partyId);
@@ -124,6 +124,23 @@ describe('Bluvia against Firestore emulator', () => {
     const p = await get('parties', partyId);
     expect(p.outstanding).toBe(146000);
     expect(p.jarBalance[jar20]).toBe(5);
+    expect((await computeRecalc()).diffs).toEqual([]);
+  });
+
+  it('bill with returned jars: padded number, separate jarReturn entry, balances match recalculation', async () => {
+    const before = await get('parties', partyId);
+    const r = await api.createBill({
+      type: 'bill', partyId, partyName: 'Ram Traders', dateKey: '2026-02-05', forText: 'Drinking water supply.',
+      lines: [{ itemId: 'i1', itemName: '20L Jar Water', jarTypeId: jar20, qty: 4, rate: 4000, amount: 16000, jarGiven: true }],
+      subTotal: 16000, discount: 0, extraCharge: 0, total: 16000, note: '', returns: { [jar20]: 3 },
+    });
+    expect(r.billNo).toBe('00002');
+    const p = await get('parties', partyId);
+    expect(p.outstanding).toBe(before.outstanding + 16000);
+    expect(p.jarBalance[jar20]).toBe(before.jarBalance[jar20] + 4 - 3);
+    const bill = await get('transactions', r.id);
+    expect(bill.returnedInBill).toEqual({ [jar20]: 3 });
+    expect(bill.forText).toBe('Drinking water supply.');
     expect((await computeRecalc()).diffs).toEqual([]);
   });
 

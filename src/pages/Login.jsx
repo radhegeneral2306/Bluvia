@@ -28,8 +28,7 @@ export default function Login() {
     <div className="min-h-full flex items-center justify-center p-6">
       <form onSubmit={submit} className="card w-full max-w-sm p-6 space-y-4">
         <div className="text-center">
-          <img src="/icons/icon-192.png" alt="" className="w-16 h-16 mx-auto rounded-2xl" />
-          <h1 className="text-xl font-bold mt-2">Bluvia</h1>
+          <img src="/logo.jpg" alt="Bluvia Pure Drinking Water" className="w-56 max-w-full mx-auto rounded-lg" />
           <p className="text-sm text-slate-500">Login karo</p>
         </div>
         <div><span className="label">Email</span>

@@ -9,7 +9,7 @@ export default function Masters() {
   const [edit, setEdit] = useState(null);
   const toast = useToast();
 
-  const blankJar = { name: '', defaultRate: 0, defaultDeposit: 0, active: true };
+  const blankJar = { name: '', shortCode: '', defaultRate: 0, defaultDeposit: 0, active: true };
   const blankItem = { name: '', unit: 'pcs', defaultRate: 0, jarTypeId: '', active: true };
 
   async function save() {
@@ -40,7 +40,7 @@ export default function Masters() {
               <div className="font-semibold">{r.name} {r.active === false && <Badge tone="amber">Inactive</Badge>}</div>
               <div className="text-sm text-slate-500">
                 Rate {money(r.defaultRate || 0)}
-                {tab === 'jar' ? ` • Deposit ${money(r.defaultDeposit || 0)}` : ` • ${r.unit || ''}${r.jarTypeId ? ` • Jar: ${jarMap[r.jarTypeId]?.name || '?'}` : ''}`}
+                {tab === 'jar' ? ` • Deposit ${money(r.defaultDeposit || 0)}${r.shortCode ? ` • Code ${r.shortCode}` : ''}` : ` • ${r.unit || ''}${r.jarTypeId ? ` • Jar: ${jarMap[r.jarTypeId]?.name || '?'}` : ''}`}
               </div>
             </button>
             <button className="btn btn-sm" onClick={() => toggle(tab === 'jar' ? 'jarTypes' : 'items', r)}>
@@ -55,6 +55,11 @@ export default function Masters() {
         {edit && (
           <div className="space-y-3">
             <Field label="Name"><input className="input" value={edit.data.name} onChange={(e) => set('name', e.target.value)} /></Field>
+            {tab === 'jar' && (
+              <Field label="PDF short code (1–2 letters)" hint="Invoice table mein columns ke liye, jaise N → ND / NR (Normal Delivered / Returned), C → CD / CR.">
+                <input className="input" maxLength={3} value={edit.data.shortCode || ''} onChange={(e) => set('shortCode', e.target.value.toUpperCase())} />
+              </Field>
+            )}
             {tab === 'item' && (
               <>
                 <Field label="Unit (jar, pcs, box…)"><input className="input" value={edit.data.unit || ''} onChange={(e) => set('unit', e.target.value)} /></Field>

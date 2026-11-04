@@ -5,9 +5,9 @@ import { buildBillPdf } from '../lib/pdf.js';
 import { sharePdf, billText, waLink } from '../lib/share.js';
 
 export default function ShareBillModal({ bill, onClose }) {
-  const { settings, partyMap, jarName, money } = useStore();
+  const { settings, partyMap, jarName, jarTypes, money } = useStore();
   const toast = useToast();
-  const [layout, setLayout] = useState(() => { try { return localStorage.getItem('bluvia_pdf_layout') || 'a5'; } catch { return 'a5'; } });
+  const [layout, setLayout] = useState(() => { try { return localStorage.getItem('bluvia_pdf_layout') === 'thermal' ? 'thermal' : 'invoice'; } catch { return 'invoice'; } });
   const [busy, setBusy] = useState(false);
   if (!bill) return null;
   const party = partyMap[bill.partyId];
@@ -16,7 +16,7 @@ export default function ShareBillModal({ bill, onClose }) {
   async function pdf() {
     setBusy(true);
     try {
-      const doc = await buildBillPdf({ bill, party, settings, jarName, layout });
+      const doc = await buildBillPdf({ bill, party, settings, jarName, jarTypes, layout });
       const r = await sharePdf(doc, `${bill.billNo || 'bill'}.pdf`, `Bill ${bill.billNo}`);
       if (r === 'downloaded') toast('PDF download ho gaya');
     } catch (e) { toast(`PDF nahi bana: ${e.message}`, 'err'); } finally { setBusy(false); }
@@ -26,7 +26,7 @@ export default function ShareBillModal({ bill, onClose }) {
     <Modal open onClose={onClose} title={`Bill ${bill.billNo || ''} share karo`}>
       <div className="space-y-3">
         <div className="flex gap-2">
-          {[['a5', 'A5 page'], ['thermal', 'Thermal (narrow)']].map(([k, l]) => (
+          {[['invoice', 'Invoice (full page)'], ['thermal', 'Thermal (narrow)']].map(([k, l]) => (
             <button key={k} onClick={() => pick(k)} className={`btn btn-sm flex-1 ${layout === k ? 'btn-primary' : ''}`}>{l}</button>
           ))}
         </div>

@@ -18,13 +18,14 @@ export default function BillForm() {
   const [sp] = useSearchParams();
   const nav = useNavigate();
   const toast = useToast();
-  const { items, itemMap, jarMap, partyMap, jarName, money } = useStore();
+  const { items, itemMap, jarMap, jarTypes, partyMap, jarName, money, settings } = useStore();
   const [old, setOld] = useState(null);
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(null);
   const [depOn, setDepOn] = useState(false);
   const [depAmt, setDepAmt] = useState(0);
+  const [returns, setReturns] = useState({});
   const depTouched = useRef(false);
 
   useEffect(() => {
@@ -35,11 +36,11 @@ export default function BillForm() {
         if (!t || t.type !== 'bill') return nav('/bills', { replace: true });
         setOld(t);
         setF({
-          partyId: t.partyId, dateKey: t.dateKey, discount: t.discount || 0, extraCharge: t.extraCharge || 0, note: t.note || '',
+          partyId: t.partyId, dateKey: t.dateKey, forText: t.forText ?? '', discount: t.discount || 0, extraCharge: t.extraCharge || 0, note: t.note || '',
           lines: t.lines.map((l) => ({ key: `l${++seq}`, itemId: l.itemId, qty: l.qty, rate: l.rate, rateTouched: true, jarGiven: l.jarGiven !== false })),
         });
       } else {
-        setF({ partyId: sp.get('party') || '', dateKey: todayKey(), discount: 0, extraCharge: 0, note: '', lines: [newLine()] });
+        setF({ partyId: sp.get('party') || '', dateKey: todayKey(), forText: settings.invoiceFor || '', discount: 0, extraCharge: 0, note: '', lines: [newLine()] });
       }
     })();
   }, [f, id, sp, nav]);
@@ -90,7 +91,7 @@ export default function BillForm() {
     if (total < 0) return toast('Total negative nahi ho sakta (discount zyada hai)', 'err');
     const bill = {
       type: 'bill', partyId: f.partyId, partyName: party.name, dateKey: f.dateKey, lines: built,
-      subTotal, discount: f.discount || 0, extraCharge: f.extraCharge || 0, total, note: f.note || '',
+      subTotal, discount: f.discount || 0, extraCharge: f.extraCharge || 0, total, note: f.note || '', forText: f.forText || '',
     };
     const warn = negativeJarWarnings(party, planChange(old, { ...bill, id: old?.id }).parties[f.partyId] || { jars: {} });
     if (warn.length && !window.confirm(`Dhyan: ${warn.map((w) => `${jarName(w.jarTypeId)} balance ${w.balance}`).join(', ')} ho jayega. Phir bhi save?`)) return;
@@ -103,9 +104,10 @@ export default function BillForm() {
       } else {
         const r = await createBill({
           ...bill, depositAmount: depOn ? depAmt : 0, depositJarTypeId: depOn ? suggestedDep.type : null,
+          returns: Object.fromEntries(Object.entries(returns).filter(([, n]) => n > 0)),
         });
         toast(`Bill ${r.billNo} save ho gaya`);
-        setSaved({ ...bill, id: r.id, billNo: r.billNo, prevOutstanding: r.prevOutstanding, newOutstanding: r.prevOutstanding + total, jarBalanceAfter: r.jarBalanceAfter, depositCollectedInBill: depOn ? depAmt : 0 });
+        setSaved({ ...bill, id: r.id, billNo: r.billNo, prevOutstanding: r.prevOutstanding, newOutstanding: r.prevOutstanding + total, jarBalanceAfter: r.jarBalanceAfter, depositCollectedInBill: depOn ? depAmt : 0, returnedInBill: Object.fromEntries(Object.entries(returns).filter(([, n]) => n > 0)) });
       }
     } catch (e) {
       toast(e.message || 'Save nahi hua', 'err', 6000);
@@ -158,7 +160,18 @@ export default function BillForm() {
           <Field label="Discount"><MoneyInput value={f.discount} onChange={(v) => set('discount', v)} /></Field>
           <Field label="Extra charge"><MoneyInput value={f.extraCharge} onChange={(v) => set('extraCharge', v)} /></Field>
         </div>
+        <Field label="Invoice 'FOR' text" hint="PDF invoice mein FOR: ke neeche dikhega"><input className="input" value={f.forText} onChange={(e) => set('forText', e.target.value)} /></Field>
         <Field label="Note"><input className="input" value={f.note} onChange={(e) => set('note', e.target.value)} /></Field>
+        {!old && jarTypes.some((j) => j.active !== false) && (
+          <div className="rounded-xl border border-slate-200 p-3 space-y-2">
+            <div className="font-medium text-sm">Khali jar wapas liye (optional — alag Jar Return entry banegi)</div>
+            <div className="grid grid-cols-2 gap-3">
+              {jarTypes.filter((j) => j.active !== false).map((j) => (
+                <Field key={j.id} label={j.name}><QtyInput value={returns[j.id] || 0} onChange={(n) => setReturns((r) => ({ ...r, [j.id]: n }))} /></Field>
+              ))}
+            </div>
+          </div>
+        )}
         {!old && (
           <div className="rounded-xl border border-slate-200 p-3 space-y-2">
             <label className="flex items-center gap-3 min-h-[40px]">

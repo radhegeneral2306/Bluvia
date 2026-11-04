@@ -64,8 +64,9 @@ function writeGlobal(w, g) {
 
 // ---------- settings / masters ----------
 export const DEFAULT_SETTINGS = {
-  businessName: 'Bluvia Pure Drinking Water', address: '', phone: '', billPrefix: 'BLV-', nextBillNo: 1,
-  footerNote: 'Thank you for your business!', paymentModes: ['Cash', 'UPI', 'Bank'], currency: '₹', countryCode: '91',
+  businessName: 'Bluvia Pure Drinking Water', managerName: '', address: '', phone: '', billPrefix: '', billNoPad: 5, nextBillNo: 1,
+  invoiceFor: 'Drinking water supply.', showDuesOnPdf: true,
+  footerNote: 'THANK YOU FOR YOUR BUSINESS!', paymentModes: ['Cash', 'UPI', 'Bank'], currency: '₹', countryCode: '91',
 };
 
 export async function seedDefaults() {
@@ -133,7 +134,7 @@ export async function createBill(input) {
     err.code = 'OFFLINE_BILL';
     throw err;
   }
-  const { depositAmount = 0, depositJarTypeId = null, ...bill } = input;
+  const { depositAmount = 0, depositJarTypeId = null, returns = {}, ...bill } = input;
   return runTransaction(db, async (tx) => {
     const sRef = doc(db, 'settings', 'main');
     const pRef = doc(db, 'parties', bill.partyId);
@@ -141,15 +142,16 @@ export async function createBill(input) {
     const s = sSnap.data() || {};
     const p = pSnap.data() || {};
     const seq = s.nextBillNo || 1;
-    const billNo = `${s.billPrefix || ''}${seq}`;
+    const billNo = `${s.billPrefix || ''}${String(seq).padStart(s.billNoPad || 0, '0')}`;
     const eff = effectOf(bill);
     const jarAfter = { ...(p.jarBalance || {}) };
     for (const [k, v] of Object.entries(eff.jars)) jarAfter[k] = (jarAfter[k] || 0) + v;
+    for (const [k, v] of Object.entries(returns)) if (v) jarAfter[k] = (jarAfter[k] || 0) - v;
     const prevOutstanding = p.outstanding || 0;
     const billRef = doc(collection(db, 'transactions'));
     const doc1 = base({
       ...bill, billNo, billSeq: seq, prevOutstanding, newOutstanding: prevOutstanding + bill.total,
-      jarBalanceAfter: jarAfter, depositCollectedInBill: depositAmount || 0,
+      jarBalanceAfter: jarAfter, depositCollectedInBill: depositAmount || 0, returnedInBill: returns,
     });
     const pairs = [[null, { ...doc1, id: billRef.id }]];
     tx.set(billRef, doc1);
@@ -161,6 +163,17 @@ export async function createBill(input) {
       });
       tx.set(dRef, d);
       pairs.push([null, d]);
+    }
+    // jars returned along with the bill: one separate jarReturn entry per jar type (so they show in the Jars ledger)
+    for (const [jarTypeId, qty] of Object.entries(returns)) {
+      if (!qty) continue;
+      const rRef = doc(collection(db, 'transactions'));
+      const r = base({
+        type: 'jarReturn', partyId: bill.partyId, partyName: bill.partyName, dateKey: bill.dateKey,
+        jarTypeId, qty, note: `With bill ${billNo}`, linkedBillId: billRef.id,
+      });
+      tx.set(rRef, r);
+      pairs.push([null, r]);
     }
     tx.update(sRef, { nextBillNo: seq + 1 });
     writePlan(tx, planChanges(pairs));

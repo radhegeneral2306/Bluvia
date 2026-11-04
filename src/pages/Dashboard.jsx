@@ -22,6 +22,7 @@ export default function Dashboard() {
 
   return (
     <Page title={settings.businessName} narrow={false}>
+      <img src="/logo.jpg" alt="" className="h-14 rounded-lg lg:hidden" />
       {stale && (
         <Link to="/backup" className="block rounded-xl bg-amber-100 text-amber-900 p-3 text-sm font-medium">
           ⚠️ {days === null ? 'Abhi tak koi backup nahi liya.' : `Last backup ${days} din pehle liya tha.`} Backup lene ke liye yahan dabao.

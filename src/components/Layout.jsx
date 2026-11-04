@@ -19,7 +19,7 @@ export default function Layout({ banner }) {
   return (
     <div className="min-h-full lg:flex">
       <aside className="hidden lg:flex lg:flex-col w-60 shrink-0 bg-white border-r border-slate-200 sticky top-0 h-screen p-3 gap-1">
-        <Link to="/" className="px-3 py-4 font-bold text-brand-700 text-lg leading-tight">{settings?.businessName || 'Bluvia'}</Link>
+        <Link to="/" className="px-1 py-3"><img src="/logo.jpg" alt={settings?.businessName || 'Bluvia'} className="w-full rounded-lg" /></Link>
         {side.map(([to, ic, label, end]) => (
           <NavLink key={to} to={to} end={end}
             className={({ isActive }) => `rounded-xl px-3 py-2.5 text-sm font-semibold flex gap-3 ${isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-700 hover:bg-slate-100'}`}>

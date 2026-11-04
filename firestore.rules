@@ -15,7 +15,7 @@ service cloud.firestore {
     match /settings/{id} {
       allow read: if isOwner();
       allow write: if isOwner()
-        && numOrAbsent('nextBillNo')
+        && numOrAbsent('nextBillNo') && numOrAbsent('billNoPad')
         && strOrAbsent('businessName') && strOrAbsent('billPrefix') && strOrAbsent('currency');
     }
 

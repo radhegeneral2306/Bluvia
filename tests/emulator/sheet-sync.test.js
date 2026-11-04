@@ -125,6 +125,8 @@ describe('Code.gs against the Firestore emulator', () => {
   let logSheet;
 
   beforeAll(async () => {
+    // start from an empty database (the other emulator test file may have run before this one)
+    await fetch('http://127.0.0.1:8080/emulator/v1/projects/demo-bluvia/databases/(default)/documents', { method: 'DELETE' });
     const rules = readFileSync('firestore.rules', 'utf8').replaceAll('OWNER_UID', OWNER);
     const res = await fetch('http://127.0.0.1:8080/emulator/v1/projects/demo-bluvia:securityRules', {
       method: 'PUT', body: JSON.stringify({ rules: { files: [{ name: 'firestore.rules', content: rules }] } }),

@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react';
+import { createContext, lazy, Suspense, useContext } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { CloudSlash, ArrowsClockwise } from '@phosphor-icons/react';
@@ -23,6 +23,8 @@ import Backup from './pages/Backup.jsx';
 import Recalc from './pages/Recalc.jsx';
 import Deleted from './pages/Deleted.jsx';
 import More from './pages/More.jsx';
+
+const MapView = lazy(() => import('./pages/MapView.jsx')); // Leaflet is only downloaded when the map is opened
 
 function ConfigMissing() {
   return (
@@ -85,6 +87,7 @@ function Gate() {
       <Route element={<Layout banner={<Banners />} />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/parties" element={<Parties />} />
+        <Route path="/map" element={<Suspense fallback={<div className="p-4 max-w-2xl mx-auto"><Spinner text="Map khul raha hai" rows={3} /></div>}><MapView /></Suspense>} />
         <Route path="/party/new" element={<PartyForm />} />
         <Route path="/party/:id" element={<PartyDetail />} />
         <Route path="/party/:id/edit" element={<PartyForm />} />

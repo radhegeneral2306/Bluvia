@@ -142,6 +142,7 @@ Ledger / bills list tez aur sasti rakhne ke liye 3 "composite index" chahiye.
    - **Framework preset:** `None` (ya `Vite` — dono chalega)
    - **Build command:** `npm run build`
    - **Build output directory:** `dist`
+   - Agar Cloudflare **"Deploy command"** maange (Workers flow): `npx wrangler deploy` (repo mein `wrangler.jsonc` already hai, SPA routing uska hissa hai).
 6. **"Environment variables"** (Advanced) mein yeh **7 variables** add karo (naam bilkul waise hi, capital letters mein):
 
    | Variable name | Value |

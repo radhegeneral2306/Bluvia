@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { signOut } from 'firebase/auth';
+import { auth } from '../lib/firebase.js';
 import { DownloadSimple, X, Calculator, Database, SignOut, CheckCircle, Info, Sun, Moon, DeviceMobile, Plus } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 import { saveSettings } from '../data/api.js';
@@ -9,7 +11,6 @@ import { getTheme, setTheme } from '../lib/theme.js';
 import { areaList, addArea, removeArea, partiesUsingArea, strayAreas } from '../lib/areas.js';
 import { canInstall, promptInstall, onInstallChange, isStandalone, isIOS } from '../lib/pwa.js';
 import { isValidVpa, fillRemark, REMARK_DEFAULT } from '../lib/upi.js';
-import { secureLogout } from '../lib/logout.js';
 
 const FREE_LIMIT = 50000;
 
@@ -32,7 +33,6 @@ export default function Settings() {
   const [newArea, setNewArea] = useState('');
   const [areaErr, setAreaErr] = useState('');
   const [upiErr, setUpiErr] = useState('');
-  const [loggingOut, setLoggingOut] = useState(false);
   const [nextEdited, setNextEdited] = useState(false); // did the user type in 'Next bill number'?
   const [theme, setThemeState] = useState(getTheme());
 
@@ -94,11 +94,6 @@ export default function Settings() {
   };
   const reads = getReads();
   const lastBackup = fmtDateTime(settings?.lastBackupAt);
-  async function doLogout() {
-    if (loggingOut) return;
-    setLoggingOut(true);
-    try { await secureLogout(); } finally { setLoggingOut(false); }
-  }
 
   const H = ({ children }) => <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">{children}</h2>;
   const pickTheme = (t) => { setTheme(t); setThemeState(t); };
@@ -255,8 +250,7 @@ export default function Settings() {
             <Link to="/backup" className="btn w-full"><Database size={20} />Backup / Restore</Link>
           </div>
           <p className="text-xs text-slate-500">Logged in: {user?.email}</p>
-          <button className="btn btn-danger w-full" disabled={loggingOut} onClick={doLogout}><SignOut size={20} />Logout</button>
-          <p className="text-xs text-slate-500">Logout par is phone se aapka saara local data bhi hat jayega.</p>
+          <button className="btn btn-danger w-full" onClick={() => signOut(auth)}><SignOut size={20} />Logout</button>
         </div>
       </section>
       <StickyBar><button className="btn btn-primary flex-1" disabled={busy} onClick={save}>Save settings</button></StickyBar>

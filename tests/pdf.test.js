@@ -20,7 +20,7 @@ const logo = 'data:image/jpeg;base64,' + readFileSync('public/logo.jpg').toStrin
 describe('invoice PDF in the owner format', () => {
   it('uses N/C codes in ND CD NR CR order and falls back to A,B,...', () => {
     expect(jarColumns(jarTypes, bill).map((c) => c.code)).toEqual(['N', 'C']);
-    expect(jarColumns([{ id: 'x', name: '20L' }, { id: 'y', name: '10L' }], bill).map((c) => c.code)).toEqual(['A', 'B']);
+    expect(jarColumns([{ id: 'x', name: '20L' }, { id: 'y', name: '10L' }], { ...bill, lines: [] }).map((c) => c.code)).toEqual(['A', 'B']);
   });
   it('builds a Letter page and embeds the original logo bytes', async () => {
     const doc = await buildBillPdf({ bill, party, settings, jarName: (id) => id, jarTypes, logo });

@@ -400,7 +400,7 @@ describe('money fuzz', () => {
   it('fromPaise/toPaise round-trip for random integer paise (positive, negative, huge)', () => {
     const r = R(mulberry32(1));
     for (let i = 0; i < 5000; i++) {
-      const p = r.pick([r.int(-9999999, 9999999), r.int(0, 99), r.int(-99, 0), r.int(0, 2 ** 40)]);
+      const p = r.pick([r.int(-9999999, 9999999), r.int(0, 99), r.int(-99, 0), r.int(0, 10000000000)]); // up to MAX_PAISE (100 crore rupees), the app-wide cap
       expect(toPaise(fromPaise(p)), `p=${p}`).toBe(p);
     }
   });

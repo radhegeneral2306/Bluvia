@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 vi.mock('../src/lib/backup.js', () => ({ downloadBlob: () => {} }));
-const { buildBillPdf, buildStatementPdf, jarColumns } = await import('../src/lib/pdf.js');
+const { buildBillPdf, buildStatementPdf, jarColumns, jarExtras } = await import('../src/lib/pdf.js');
 const { billText, statementText, reminderText, waLink, pdfMoney, jarsText } = await import('../src/lib/share.js');
 const { describeTxn } = await import('../src/lib/describe.js');
 
@@ -27,7 +27,7 @@ const mkBill = (over = {}) => ({
   billNo: '00104', dateKey: '2026-10-10', partyName: 'Innov8 Workspaces', forText: 'Drinking water supply.', lines: [line()],
   subTotal: 40000, discount: 0, extraCharge: 0, total: 40000, note: '', returnedInBill: {}, prevOutstanding: 0, newOutstanding: 40000, ...over,
 });
-const jarName = (id) => ({ n: 'Normal Jar', c: 'Cold Jar', x: 'Third', y: 'Fourth', z: 'Fifth' }[id] || id);
+const jarName = (id) => ({ n: 'Normal Jar', c: 'Cold Jar', x: 'Third', y: 'Fourth', z: 'Fifth', w: 'Sixth' }[id] || id);
 const money = (p) => `₹${(p / 100).toFixed(2)}`;
 
 async function render(name, opts) {
@@ -80,7 +80,7 @@ describe('invoice PDF edge cases', () => {
   });
 
   // KNOWN DEFECT: AMOUNT cell uses splitTextToSize()[0], so a 9+ digit amount is cut ("890.1") and the TOTAL cell touches the border.
-  it.skip('crore amount is printed completely in the table row (defect: row shows 1,23,45,67,890.1)', async () => {
+  it('crore amount is printed completely in the table row (defect: row shows 1,23,45,67,890.1)', async () => {
     const r = await render('03c-amount-trunc', { bill: mkBill({ total: 123456789012, subTotal: 123456789012, lines: [line({ amount: 123456789012 })] }) });
     expect((r.text.match(/890\.12/g) || []).length).toBeGreaterThanOrEqual(2);
   });
@@ -90,9 +90,9 @@ describe('invoice PDF edge cases', () => {
     if (hasPdftotext) { expect(r.text).not.toMatch(/NaN|undefined/); expect(r.text).toMatch(/TOTAL\s+0/); }
   });
 
-  it('advance (negative previous due) is shown with a minus and not dropped', async () => {
+  it('advance (negative previous due) is worded as Advance, not as a negative due', async () => {
     const r = await render('05-advance', { bill: mkBill({ prevOutstanding: -50000, newOutstanding: -10000 }) });
-    if (hasPdftotext) expect(r.text).toMatch(/Previous due: -Rs\. 500/);
+    if (hasPdftotext) { expect(r.text).toMatch(/Advance: Rs\. 500/); expect(r.text).not.toContain('Previous due'); expect(r.text).toMatch(/Advance left: Rs\. 100/); }
   });
 
   it('showDuesOnPdf=false hides previous due and jar lines; note shows when set', async () => {
@@ -129,16 +129,40 @@ describe('invoice PDF edge cases', () => {
   });
 
   // KNOWN DEFECT: only the first 4 jar types become columns, so a 5th type's delivered jars silently vanish from the table.
-  it.skip('5 jar types: the 5th type must not vanish silently (defect: jarColumns slices to 4)', async () => {
+  it('5 jar types: a USED 5th type gets a column (used types win the 4 slots)', async () => {
     const jt5 = [...jt2, { id: 'x', name: 'Third', shortCode: 'T' }, { id: 'y', name: 'Fourth', shortCode: 'F' }, { id: 'z', name: 'Fifth', shortCode: 'V' }];
     const cols = jarColumns(jt5, mkBill({ lines: [line({ jarTypeId: 'z', qty: 7 })] }));
     expect(cols.map((c) => c.id)).toContain('z');
   });
-  it.skip('5 jar types: delivered jars of the 5th type must appear somewhere on the invoice (defect: they vanish)', async () => {
+  it('5 jar types: delivered jars of the 5th type appear on the invoice', async () => {
     const jt5 = [...jt2, { id: 'x', name: 'Third', shortCode: 'T' }, { id: 'y', name: 'Fourth', shortCode: 'F' }, { id: 'z', name: 'Fifth', shortCode: 'V' }];
     const r = await render('12b-fifth-type', { jarTypes: jt5, bill: mkBill({ lines: [line({ jarTypeId: 'z', qty: 7, itemName: 'Fifth jar' })] }) });
     expect(r.text).toMatch(/\b7\b/);
   });
+  it('6 used jar types: 4 columns plus an "Other jars" line listing the rest with counts', async () => {
+    const jt6 = [...jt2, { id: 'x', name: 'Third', shortCode: 'T' }, { id: 'y', name: 'Fourth', shortCode: 'F' }, { id: 'z', name: 'Fifth', shortCode: 'V' }, { id: 'w', name: 'Sixth', shortCode: 'S' }];
+    const bill = mkBill({ lines: ['n', 'c', 'x', 'y', 'z', 'w'].map((id, i) => line({ jarTypeId: id, qty: i + 2, itemName: id })), returnedInBill: { z: 4 } });
+    expect(jarColumns(jt6, bill).length).toBe(4);
+    expect(jarExtras(jt6, bill).map((e) => [e.id, e.delivered, e.returned])).toEqual([['z', 6, 4], ['w', 7, 0]]);
+    const r = await render('12c-six-used', { jarTypes: jt6, bill });
+    if (hasPdftotext) { const t = r.text.replace(/\s+/g, ' '); expect(t).toContain('Other jars: Fifth delivered 6, returned 4; Sixth delivered 7, returned 0'); }
+  });
+
+  it('long party name: NAME cell shows the whole name (shrunk or wrapped) and the row grows', async () => {
+    const name = 'The Extraordinarily Long Named Customer Private Limited And Sons Trading Co';
+    const r = await render('14c-name-cell', { party: { name, phone: '', address: '' }, bill: mkBill({ partyName: name }) });
+    if (hasPdftotext) { const t = r.text.replace(/\s+/g, ' '); expect(t).toContain('Limited And Sons Trading Co'); expect((t.match(/Extraordinarily/g) || []).length).toBeGreaterThanOrEqual(2); expect(overlaps(r.file)).toBe(0); }
+  });
+
+  it('standard sample keeps the owner coordinates (TO block at the original position)', async () => {
+    const r = await render('14d-coords', {});
+    const html = spawnSync('pdftotext', ['-bbox', r.file, '-'], { encoding: 'utf8' }).stdout;
+    if (hasPdftotext) {
+      const y = (w) => +html.match(new RegExp(`yMin="([\\d.]+)"[^>]*>${w}</word>`))[1];
+      expect(Math.abs(y('TO:') - 233.6)).toBeLessThan(1.5); // measured with the pre-fix build: unchanged for short content
+    }
+  });
+
   it('5 jar types: documents the cap (first 4 only) and still renders', async () => {
     const jt5 = [...jt2, { id: 'x', name: 'Third', shortCode: 'T' }, { id: 'y', name: 'Fourth', shortCode: 'F' }, { id: 'z', name: 'Fifth', shortCode: 'V' }];
     expect(jarColumns(jt5, mkBill()).length).toBe(4);
@@ -161,7 +185,7 @@ describe('invoice PDF edge cases', () => {
   });
 
   // KNOWN DEFECT: a long party name in the TO block is not wrapped and runs into the FOR text on the right; the NAME cell is cut to its first wrapped line.
-  it.skip('long party name must not overlap the FOR text (defect: TO name overlaps FOR block)', async () => {
+  it('long party name must not overlap the FOR text', async () => {
     const name = 'The Extraordinarily Long Named Customer Private Limited And Sons Trading Co';
     const r = await render('14b-long-name', { party: { name, phone: '', address: '' }, bill: mkBill({ partyName: name, forText: 'Drinking water supply for the entire fourth floor and cafeteria and conference rooms during Diwali week' }) });
     expect(overlaps(r.file)).toBe(0);
@@ -173,7 +197,7 @@ describe('invoice PDF edge cases', () => {
     expect(r.pages).toBe(1);
   });
   // KNOWN DEFECT: sender lines are drawn from y=128 with no limit, so 7+ lines (manager + address + phone) print over the TO block at y=231.
-  it.skip('long sender address must not overlap the TO block (defect: overlap from 7 sender lines)', async () => {
+  it('long sender address must not overlap the TO block', async () => {
     const r = await render('15b-sender-8', { settings: { ...base, address: Array.from({ length: 6 }, (_, i) => `Our office line ${i + 1}`).join('\n') } });
     expect(overlaps(r.file)).toBe(0);
   });
@@ -188,11 +212,37 @@ describe('invoice PDF edge cases', () => {
       expect(r.text).toMatch(/Caf\S* M\S*nch\S*n \S*and/); // Latin accents survive
     }
   });
-  // KNOWN DEFECT: Devanagari is drawn as gibberish (e.g. "60M.> 8MK0") with no warning, since built-in Helvetica has no such glyphs.
-  it.skip('Devanagari party name must be readable in the PDF (defect: needs an embedded Devanagari font)', async () => {
-    const r = await render('16b-devanagari', { party: { name: 'शर्मा स्टोर', phone: '', address: '' }, bill: mkBill({ partyName: 'शर्मा स्टोर' }) });
-    expect(r.text).toContain('शर्मा');
-  });
+  // Non-Latin text is drawn through a canvas in the browser (jsPDF cannot shape Devanagari). Node has no canvas, so a stub stands in:
+  // it proves the text is routed to the canvas (never to jsPDF's Latin-only fonts) and placed as an image without crashing.
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  async function withCanvasStub(fn) {
+    const drawn = [];
+    globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => ({ font: '', fillStyle: '', textBaseline: '', measureText: (t) => ({ width: t.length * 5 }), fillText: (t) => drawn.push(t) }), toDataURL: () => PNG }) };
+    try { return await fn(drawn); } finally { delete globalThis.document; }
+  }
+  it('Devanagari party name, address, FOR text and footer go through the canvas path as images (invoice)', () => withCanvasStub(async (drawn) => {
+    const name = 'शर्मा स्टोर';
+    const r = await render('16b-devanagari', { settings: { ...base, footerNote: 'धन्यवाद' }, party: { name, phone: '', address: 'रायपुर, छत्तीसगढ़' }, bill: mkBill({ partyName: name, forText: 'पीने का पानी' }) });
+    expect(r.pages).toBe(1);
+    for (const t of [name, 'पीने का पानी', 'धन्यवाद']) expect(drawn).toContain(t);
+    expect(drawn.some((t) => t.includes('रायपुर'))).toBe(true);
+    const bytes = Buffer.from(r.doc.output('arraybuffer')).toString('latin1');
+    expect((bytes.match(/\/Subtype\s*\/Image/g) || []).length).toBeGreaterThanOrEqual(2); // logo + canvas text
+  }));
+  it('Devanagari in the thermal receipt and the statement does not crash and uses the canvas', () => withCanvasStub(async (drawn) => {
+    const name = 'शर्मा स्टोर';
+    const t = await render('16c-devanagari-thermal', { layout: 'thermal', party: { name, phone: '9876543210', address: '' }, bill: mkBill({ partyName: name, lines: [line({ itemName: 'पीने का पानी' })] }) });
+    expect(t.pages).toBe(1);
+    const doc = await buildStatementPdf({ party: { name, outstanding: 100, jarBalance: {} }, rows: [{ t: {}, d: { dateText: '01/10/2026', title: 'Bill', detail: 'पीने का पानी', outstanding: 100 }, balance: 100 }], settings: base, jarName, logo });
+    expect(doc.getNumberOfPages()).toBe(1);
+    expect(drawn).toContain('पीने का पानी');
+  }));
+  it('a very long Devanagari name wraps by words in the TO block (canvas measure) instead of running on', () => withCanvasStub(async (drawn) => {
+    const name = Array.from({ length: 12 }, () => 'शर्मा स्टोर').join(' ');
+    const r = await render('16d-devanagari-long', { party: { name, phone: '', address: '' }, bill: mkBill({ partyName: name }) });
+    expect(r.pages).toBe(1);
+    expect(drawn.filter((t) => t.startsWith('शर्मा')).length).toBeGreaterThan(1);
+  }));
 
   it('thermal layout renders with many lines and long names', async () => {
     const lines = Array.from({ length: 25 }, (_, i) => line({ itemName: `A fairly long item name number ${i + 1}`, qty: i + 1, amount: 4000 * (i + 1) }));
@@ -206,13 +256,13 @@ describe('invoice PDF edge cases', () => {
 
   // KNOWN DEFECT: thermal page height is a rough estimate (70 + 9mm per line). Wrapped item names and long address/footer push content past the
   // page bottom, so "Previous due / TOTAL DUE / Jars with you / footer" are cut off without warning.
-  it.skip('thermal: dues, jar line and footer are all present after many wrapped lines (defect: cut off)', async () => {
+  it('thermal: dues, jar line and footer are all present after many wrapped lines', async () => {
     const lines = Array.from({ length: 25 }, (_, i) => line({ itemName: `A fairly long item name number ${i + 1}`, qty: i + 1, amount: 4000 * (i + 1) }));
     const r = await render('17b-thermal-cut', { layout: 'thermal', bill: mkBill({ lines, total: 1300000, subTotal: 1300000, prevOutstanding: 50000, newOutstanding: 1350000, jarBalanceAfter: { n: 3 }, note: 'Some note text' }) });
     for (const s of ['Previous due', 'TOTAL DUE', 'Jars with you', 'Note: Some note text', 'THANK YOU']) expect(r.text).toContain(s);
   });
   // KNOWN DEFECT: in the thermal header the party name is not shortened and is printed over the party phone number.
-  it.skip('thermal: long party name must not overlap the phone number (defect: overlap)', async () => {
+  it('thermal: long party name must not overlap the phone number', async () => {
     const r = await render('18b-thermal-name', { layout: 'thermal', party: { name: 'The Extraordinarily Long Named Customer Private Limited', phone: '9876543210', address: '' } });
     expect(overlaps(r.file)).toBe(0);
   });
@@ -223,7 +273,8 @@ describe('invoice PDF edge cases', () => {
       party: { name: 'The Extraordinarily Long Named Customer Private Limited', phone: '9876543210', address: '' }, bill: mkBill({ lines: Array.from({ length: 6 }, (_, i) => line({ itemName: `Very long item name that wraps over multiple lines number ${i}` })), note: 'n'.repeat(200) }),
     });
     expect(r.pages).toBe(1);
-    expect(pageH(r.file)).toBeGreaterThan(300); // still renders, size is only an estimate
+    expect(pageH(r.file)).toBeGreaterThan(150); // page height now follows the real content
+    if (hasPdftotext) { expect(r.text).toContain('Shop address line 8'); expect(r.text.replace(/\s+/g, ' ')).toContain('THANK YOU FOR YOUR BUSINESS!'); expect(r.text).toContain('Note: nnnn'); }
   });
 
   it('zero or empty lines array does not crash the invoice', async () => {
@@ -255,8 +306,8 @@ describe('statement PDF', () => {
     expect(doc.getNumberOfPages()).toBe(1);
   });
   // KNOWN GAP: the statement has no Bluvia logo (invoice has one). Kept as skip so it can be enabled when added.
-  it.skip('statement carries the original logo bytes (gap: statement header is text only)', async () => {
-    const doc = await buildStatementPdf({ party: { name: 'X' }, rows: mkRows(2), settings: base, jarName });
+  it('statement carries the original logo bytes', async () => {
+    const doc = await buildStatementPdf({ party: { name: 'X' }, rows: mkRows(2), settings: base, jarName, logo });
     expect(Buffer.from(doc.output('arraybuffer')).includes(readFileSync('public/logo.jpg'))).toBe(true);
   });
 });
@@ -276,11 +327,8 @@ describe('waLink phone formats', () => {
     expect(u).not.toContain('\n');
   });
   // KNOWN DEFECT: Indian numbers written with a leading 0 (11 digits, "09876543210") are not normalised.
-  it.skip('0-prefixed 11 digit number should become 91 + 10 digits (defect: link is wa.me/09876543210)', () => {
+  it('0-prefixed 11 digit number becomes 91 + 10 digits', () => {
     expect(num(waLink('09876543210', 'hi'))).toBe('919876543210');
-  });
-  it('0-prefixed number currently yields an invalid link (documents the defect)', () => {
-    expect(num(waLink('09876543210', 'hi'))).toBe('09876543210');
   });
 });
 

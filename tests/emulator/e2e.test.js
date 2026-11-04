@@ -17,8 +17,9 @@ vi.mock('../../src/lib/firebase.js', async () => {
 const api = await import('../../src/data/api.js');
 const { db } = await import('../../src/lib/firebase.js');
 const { computeRecalc } = await import('../../src/lib/recalcDb.js');
+const backupLib = await import('../../src/lib/backup.js');
 const { initializeApp } = await import('firebase/app');
-const { doc, getDoc, setDoc, getDocs, collection, getFirestore, connectFirestoreEmulator } = await import('firebase/firestore');
+const { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, getFirestore, connectFirestoreEmulator } = await import('firebase/firestore');
 
 const get = async (p, id) => (await getDoc(doc(db, p, id))).data();
 
@@ -142,6 +143,90 @@ describe('Bluvia against Firestore emulator', () => {
     expect(bill.returnedInBill).toEqual({ [jar20]: 3 });
     expect(bill.forText).toBe('Drinking water supply.');
     expect((await computeRecalc()).diffs).toEqual([]);
+  });
+
+  it('rules hardening: money must be whole, bounded, valid; deletes and cross-group type flips are denied', async () => {
+    const denied = (p) => expect(p).rejects.toThrow(/permission|false for/i);
+    const good = { type: 'receipt', partyId, dateKey: '2026-02-10', deleted: false, amount: 1000, mode: 'Cash', note: '' };
+    // positive control: a valid entry is accepted
+    await setDoc(doc(db, 'transactions', 'rule-ok'), good);
+
+    for (const bad of [NaN, Infinity, -Infinity, 10.5, -1, 1e12, 1e15, '100']) {
+      await denied(setDoc(doc(db, 'transactions', 'rule-bad'), { ...good, amount: bad }));
+    }
+    await denied(setDoc(doc(db, 'transactions', 'rule-bad'), { ...good, dateKey: '2026-2-1' }));
+    await denied(setDoc(doc(db, 'transactions', 'rule-bad'), { ...good, dateKey: '' }));
+    await denied(setDoc(doc(db, 'transactions', 'rule-bad'), { ...good, deleted: 'false' }));
+    await denied(setDoc(doc(db, 'transactions', 'rule-bad'), { ...good, partyId: '' }));
+    await denied(setDoc(doc(db, 'transactions', 'rule-bad'), { ...good, note: 'x'.repeat(2000) }));
+    await denied(setDoc(doc(db, 'transactions', 'rule-bad'), { type: 'bill', partyId, dateKey: '2026-02-10', deleted: false, total: 12.5, lines: [] }));
+    await denied(setDoc(doc(db, 'transactions', 'rule-bad'), { type: 'jarReturn', partyId, dateKey: '2026-02-10', deleted: false, qty: 2.5, jarTypeId: jar20 }));
+    await denied(setDoc(doc(db, 'transactions', 'rule-bad'), { type: 'jarReturn', partyId, dateKey: '2026-02-10', deleted: false, qty: -1, jarTypeId: jar20 }));
+
+    // other collections
+    await denied(setDoc(doc(db, 'stats', 'summary'), { totalOutstanding: NaN }, { merge: true }));
+    await denied(setDoc(doc(db, 'settings', 'main'), { nextBillNo: 0 }, { merge: true }));
+    await denied(setDoc(doc(db, 'settings', 'main'), { nextBillNo: 5.5 }, { merge: true }));
+    await denied(setDoc(doc(db, 'settings', 'main'), { billNoPad: -1 }, { merge: true }));
+    await denied(setDoc(doc(db, 'parties', 'rule-bad-party'), { name: 'x', openingBalance: 1.5 }));
+    await denied(setDoc(doc(db, 'jarTypes', 'rule-bad-jar'), { name: 'x', defaultRate: -5 }));
+
+    // type may change inside its group (jarReturn <-> jarGiven) but never across groups (receipt -> deposit)
+    await setDoc(doc(db, 'transactions', 'rule-jar'), { type: 'jarReturn', partyId, dateKey: '2026-02-10', deleted: false, qty: 1, jarTypeId: jar20 });
+    await updateDoc(doc(db, 'transactions', 'rule-jar'), { type: 'jarGiven' });
+    await denied(updateDoc(doc(db, 'transactions', 'rule-ok'), { type: 'depositTaken' }));
+    await denied(updateDoc(doc(db, 'transactions', 'rule-ok'), { type: 'bill', total: 500 }));
+
+    // hard delete is denied for everything, even for the owner
+    await denied(deleteDoc(doc(db, 'transactions', 'rule-ok')));
+    await denied(deleteDoc(doc(db, 'parties', partyId)));
+    await denied(deleteDoc(doc(db, 'settings', 'main')));
+    await denied(deleteDoc(doc(db, 'stats', 'summary')));
+    await denied(deleteDoc(doc(db, 'jarTypes', jar20)));
+
+    // the entries used by this test are tidy afterwards: soft-delete is the supported way (no balance impact: we never touched parties)
+    await updateDoc(doc(db, 'transactions', 'rule-ok'), { deleted: true });
+    await updateDoc(doc(db, 'transactions', 'rule-jar'), { deleted: true });
+  });
+
+  it('backup restore: validates the file, never lowers nextBillNo, deactivates stale jar types, names a failing chunk', async () => {
+    const { validateBackup, exportAll, restoreAll, previewRestore } = backupLib;
+    // 1) clear Hinglish errors instead of "Cannot read properties"
+    expect(() => validateBackup(null)).toThrow(/Bluvia ka backup/);
+    expect(() => validateBackup({ app: 'bluvia', data: { parties: 'x' } })).toThrow(/list nahi/);
+    expect(() => validateBackup({ app: 'bluvia', data: { parties: [{ name: 'no id' }] } })).toThrow(/sahi id nahi/);
+    expect(() => validateBackup({ app: 'bluvia', data: { secrets: [] } })).toThrow(/anjaan section/);
+    expect(() => validateBackup({ app: 'bluvia', data: [] })).toThrow(/Bluvia ka backup/);
+
+    // 2) real round trip
+    const backup = await exportAll();
+    const total = Object.values(backup.data).reduce((a, r) => a + r.length, 0);
+    const preview = await previewRestore(backup);
+    expect(preview.jarTypes.isNew).toBe(0);                // every jar type in the file already exists
+    expect(preview.settings.overwrite).toBe(1);
+
+    const settingsNow = await get('settings', 'main');
+    await setDoc(doc(db, 'settings', 'main'), { nextBillNo: settingsNow.nextBillNo + 10 }, { merge: true }); // bills issued after the backup
+    await setDoc(doc(db, 'jarTypes', 'fresh-default'), { name: 'Fresh default', defaultRate: 100, defaultDeposit: 0, active: true });
+
+    const res = await restoreAll(backup);
+    expect(res.restored).toBe(total);
+    expect(res.deactivated).toBe(1);
+    expect((await get('settings', 'main')).nextBillNo).toBe(settingsNow.nextBillNo + 10); // not rolled back
+    expect((await get('jarTypes', 'fresh-default')).active).toBe(false);
+    expect((await get('jarTypes', jar20)).active).not.toBe(false);
+    expect((await computeRecalc()).diffs).toEqual([]);
+
+    // a higher counter inside the backup still wins
+    const higher = JSON.parse(JSON.stringify(backup));
+    higher.data.settings.find((r) => r.id === 'main').nextBillNo = settingsNow.nextBillNo + 50;
+    await restoreAll(higher);
+    expect((await get('settings', 'main')).nextBillNo).toBe(settingsNow.nextBillNo + 50);
+
+    // 3) a chunk the rules reject is reported by number, not silently half-applied
+    const broken = JSON.parse(JSON.stringify(backup));
+    broken.data.transactions.push({ id: 'broken-txn', type: 'receipt', partyId, dateKey: 'bad-date', deleted: false, amount: 5 });
+    await expect(restoreAll(broken)).rejects.toThrow(/hissa \d+\/\d+ fail hua/);
   });
 
   it('rules: bad data and signed-out access are rejected', async () => {

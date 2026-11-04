@@ -204,11 +204,25 @@ export async function updateTxn(oldT0, patch) {
   writePlan(b, planChange(oldT, newT));
   return commitSafe(b.commit());
 }
-export async function softDeleteTxn(oldT0) {
+/** Non-deleted entries that were created together with a bill (deposit taken, jars returned). */
+export async function findLinked(billId) {
+  const snap = await qDocs(query(collection(db, 'transactions'), where('linkedBillId', '==', billId), where('deleted', '==', false)));
+  return snap.docs.map(withId);
+}
+
+/** Soft delete. With { withLinked: true } the deposit/jar-return entries made with the same bill go too (one batch). */
+export async function softDeleteTxn(oldT0, { withLinked = false } = {}) {
   const oldT = await fresh(oldT0);
   const b = writeBatch(db);
+  const pairs = [[oldT, { ...oldT, deleted: true }]];
   b.update(doc(db, 'transactions', oldT.id), { deleted: true, deletedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-  writePlan(b, planChange(oldT, { ...oldT, deleted: true }));
+  if (withLinked && oldT.type === 'bill') {
+    for (const l of await findLinked(oldT.id)) {
+      b.update(doc(db, 'transactions', l.id), { deleted: true, deletedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      pairs.push([l, { ...l, deleted: true }]);
+    }
+  }
+  writePlan(b, planChanges(pairs));
   return commitSafe(b.commit());
 }
 export async function restoreTxn(oldT0) {

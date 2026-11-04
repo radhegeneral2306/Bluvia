@@ -161,6 +161,8 @@ Ledger / bills list tez aur sasti rakhne ke liye 3 "composite index" chahiye.
 > ⚠️ **Bahut important:** Variables **pehli build se pehle** daalna. Agar baad mein daalo ya badlo, to **Deployments → latest deployment → "Retry deployment"** (ya koi chhota change push karo) — warna app purani/khali config ke saath rahegi (white screen / "Firebase config missing").
 
 ### Firebase mein Cloudflare domain allow karo (ek baar)
+> Agar aapka link `.workers.dev` par khatam hota hai (Workers flow), to wahi domain neeche daalo.
+
 1. Firebase → **Authentication → Settings → Authorized domains → Add domain**.
 2. `bluvia-xxxx.pages.dev` (apna link, `https://` ke bina) daalo → **Add**.
 

@@ -289,6 +289,57 @@ describe('ledger fuzz: incremental balances == full recalculation', () => {
   });
 });
 
+// ---------- independent oracle: the business rules written out again, WITHOUT using effectOf ----------
+// (so a wrong rule inside effectOf cannot hide behind "incremental == recalculate", which share effectOf)
+function oracle(w) {
+  const out = {};
+  for (const id of PARTY_IDS) {
+    const p = w.parties[id];
+    out[id] = { o: p.openingBalance, d: p.openingDeposit, j: { ...p.openingJars } };
+  }
+  for (const t of Object.values(w.txns)) {
+    if (t.deleted) continue;
+    const b = out[t.partyId];
+    if (t.type === 'bill') {
+      b.o += t.total;
+      for (const l of t.lines) if (l.jarTypeId && l.jarGiven) b.j[l.jarTypeId] = (b.j[l.jarTypeId] || 0) + l.qty;
+    } else if (t.type === 'receipt') b.o -= t.amount;
+    else if (t.type === 'jarReturn') b.j[t.jarTypeId] = (b.j[t.jarTypeId] || 0) - t.qty;
+    else if (t.type === 'jarGiven') b.j[t.jarTypeId] = (b.j[t.jarTypeId] || 0) + t.qty;
+    else if (t.type === 'depositTaken') b.d += t.amount;
+    else if (t.type === 'depositRefund') b.d -= t.amount;
+    else if (t.type === 'depositAdjust') { b.d -= t.amount; b.o -= t.amount; }
+    else if (t.type === 'adjustment') b.o += t.amount;
+  }
+  return out;
+}
+
+describe('independent business-rule oracle', () => {
+  for (const seed of [21, 22, 23, 24]) {
+    it(`seed ${seed}: incremental balances match the spec rules written out independently`, () => {
+      const r = R(mulberry32(seed));
+      const w = makeWorld(r);
+      for (let i = 0; i < 1200; i++) {
+        const what = step(r, w);
+        const want = oracle(w);
+        let to = 0, td = 0; const tj = {};
+        for (const id of PARTY_IDS) {
+          const p = w.parties[id];
+          const ctx = `seed ${seed} step ${i} (${what}) party ${id}`;
+          expect(p.outstanding, ctx).toBe(want[id].o);
+          expect(p.depositBalance, ctx).toBe(want[id].d);
+          expect(cleanJars(p.jarBalance), ctx).toEqual(cleanJars(want[id].j));
+          to += want[id].o; td += want[id].d;
+          for (const [k, v] of Object.entries(want[id].j)) tj[k] = (tj[k] || 0) + v;
+        }
+        expect(w.summary.totalOutstanding, `seed ${seed} step ${i}`).toBe(to);
+        expect(w.summary.totalDepositHeld, `seed ${seed} step ${i}`).toBe(td);
+        expect(cleanJars(w.summary.totalJarsOut), `seed ${seed} step ${i}`).toEqual(cleanJars(tj));
+      }
+    });
+  }
+});
+
 describe('openingDelta fuzz', () => {
   it('stored(old opening) + openingDelta(old,new) == openingState(new) for random openings', () => {
     const r = R(mulberry32(555));

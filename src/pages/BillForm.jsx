@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Trash, Plus, ArrowLeft, UsersThree } from '@phosphor-icons/react';
+import { Trash, Plus, ArrowLeft, UsersThree, ArrowsClockwise, X } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 import { createBill, updateTxn, getOne } from '../data/api.js';
 import { Page, Field, MoneyInput, QtyInput, StickyBar, Spinner, useToast } from '../components/ui.jsx';
@@ -11,6 +11,7 @@ import { lineAmount, billTotals } from '../lib/money.js';
 import { rateFor, depositPerJar } from '../lib/rates.js';
 import { planChange, negativeJarWarnings } from '../lib/ledger.js';
 import { dueView } from '../lib/advance.js';
+import { repeatBillLines, repeatLabel } from '../lib/repeatBill.js';
 
 // Unsaved new-bill draft lives in sessionStorage so an accidental reload or back does not lose the work.
 const DRAFT_KEY = 'bluvia_bill_draft';
@@ -47,6 +48,8 @@ export default function BillForm() {
   const [depOn, setDepOn] = useState(false);
   const [depAmt, setDepAmt] = useState(0);
   const [returns, setReturns] = useState({});
+  const [repeatInfo, setRepeatInfo] = useState(null);   // { label, skipped, changedRates } when the form was prefilled from an earlier bill
+  const [bannerOpen, setBannerOpen] = useState(true);
   const depTouched = useRef(false);
 
   useEffect(() => {
@@ -59,6 +62,24 @@ export default function BillForm() {
         setF({
           partyId: t.partyId, dateKey: t.dateKey, forText: t.forText ?? '', discount: t.discount || 0, extraCharge: t.extraCharge || 0, note: t.note || '',
           lines: t.lines.map((l) => ({ key: `l${++seq}`, itemId: l.itemId, qty: l.qty, rate: l.rate, rateTouched: true, jarGiven: l.jarGiven !== false })),
+        });
+      } else if (sp.get('repeat')) {
+        // Repeat bill: items, qty and OLD rates of an earlier bill. This takes priority over any saved draft.
+        let b = null;
+        try { b = await getOne('transactions', sp.get('repeat')); } catch { b = null; }
+        const want = sp.get('party') || b?.partyId || '';
+        if (!b || b.type !== 'bill' || b.deleted) {
+          toast('Pichhla bill load nahi hua. Khaali bill khul raha hai.', 'warn');
+          setF({ partyId: want, dateKey: todayKey(), forText: settings.invoiceFor || '', discount: 0, extraCharge: 0, note: '', lines: [newLine()] });
+          return;
+        }
+        const r = repeatBillLines({ bill: b, party: partyMap[want], itemMap, jarMap });
+        setRepeatInfo({ label: repeatLabel(b), skipped: r.skipped, changedRates: r.changedRates });
+        setF({
+          partyId: want, dateKey: todayKey(), forText: settings.invoiceFor || '', discount: 0, extraCharge: 0, note: '',
+          lines: r.lines.length
+            ? r.lines.map((l) => ({ key: `l${++seq}`, itemId: l.itemId, qty: l.qty, rate: l.rate, rateTouched: true, jarGiven: l.jarGiven, currentRate: l.currentRate }))
+            : [newLine()],
         });
       } else {
         const d = readDraft();
@@ -122,13 +143,16 @@ export default function BillForm() {
 
   function pickItem(key, itemId) {
     const it = itemMap[itemId];
-    setLine(key, { itemId, rate: rateFor(party, it, jarMap), rateTouched: false, jarGiven: true });
+    setLine(key, { itemId, rate: rateFor(party, it, jarMap), rateTouched: false, jarGiven: true, currentRate: undefined });
   }
   function pickParty(pid) {
     // refill rates only for lines the user has not edited by hand, and only for new bills (old bills keep their snapshot)
     setF((p) => ({
       ...p, partyId: pid,
-      lines: old ? p.lines : p.lines.map((l) => (l.itemId && !l.rateTouched ? { ...l, rate: rateFor(partyMap[pid], itemMap[l.itemId], jarMap) } : l)),
+      lines: old ? p.lines : p.lines.map((l) => {
+        const next = l.itemId && !l.rateTouched ? { ...l, rate: rateFor(partyMap[pid], itemMap[l.itemId], jarMap) } : l;
+        return next.currentRate !== undefined && itemMap[l.itemId] ? { ...next, currentRate: rateFor(partyMap[pid], itemMap[l.itemId], jarMap) } : next;
+      }),
     }));
   }
 
@@ -173,6 +197,17 @@ export default function BillForm() {
         <span className="truncate">{old ? `Edit bill ${old.billNo}` : 'New bill'}</span>
       </span>
     )}>
+      {repeatInfo && bannerOpen && (
+        <section className="rounded-2xl bg-brand-50 border border-brand-100 p-3.5 flex items-start gap-3" role="status">
+          <span className="w-9 h-9 shrink-0 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center"><ArrowsClockwise size={20} /></span>
+          <div className="min-w-0 flex-1 text-sm space-y-1">
+            <p className="font-semibold text-slate-800">{repeatInfo.label} se bhara gaya. Qty aur rate badal sakte ho.</p>
+            {repeatInfo.changedRates > 0 && <p className="text-slate-600">{repeatInfo.changedRates} item ka rate badal chuka hai.</p>}
+            {repeatInfo.skipped.length > 0 && <p className="text-slate-500">Ye items ab active nahi hain, chhod diye: {repeatInfo.skipped.join(', ')}</p>}
+          </div>
+          <button type="button" className="btn btn-ghost !min-h-[44px] !w-11 !px-0 rounded-full shrink-0 -mr-2 -mt-1" aria-label="Band karo" onClick={() => setBannerOpen(false)}><X size={20} /></button>
+        </section>
+      )}
       <section className="space-y-3">
         {!parties.length && !old ? (
           <div className="card p-4 flex items-center gap-3">
@@ -214,6 +249,12 @@ export default function BillForm() {
                 <Field label={`Qty${it?.unit ? ` (${it.unit})` : ''}`}><QtyInput integer={isJar} value={l.qty} onChange={(v) => setLine(l.key, { qty: v })} /></Field>
                 <Field label="Rate"><MoneyInput value={l.rate} onChange={(v) => setLine(l.key, { rate: v, rateTouched: true })} /></Field>
               </div>
+              {!old && l.currentRate > 0 && l.currentRate !== l.rate && (
+                <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
+                  <span>Aaj ka rate: <span className="num font-semibold text-slate-700">{money(l.currentRate)}</span></span>
+                  <button type="button" className="btn btn-ghost btn-sm !min-h-[44px] !px-3 text-brand-700 underline" onClick={() => setLine(l.key, { rate: l.currentRate, rateTouched: true })}>Lagao</button>
+                </div>
+              )}
               <div className="flex items-center justify-between border-t border-slate-100 pt-2.5">
                 <span className="text-sm text-slate-500">Amount</span>
                 <span className="num font-semibold text-slate-900">{money(lineAmount(l.qty, l.rate))}</span>

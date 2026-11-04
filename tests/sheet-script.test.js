@@ -274,7 +274,7 @@ describe('Area column in the Log', () => {
   it('an existing Log tab without Area gets the column appended and old rows stay untouched', () => {
     w.ctx.tab_('Log');
     const oldHeader = w.ctx.LOG_FIXED.filter((h) => h !== 'Area');
-    w.sheets.get('Log')._s.data = [oldHeader, oldHeader.map((h) => (h === 'Txn ID' ? 'old1' : ''))];
+    w.sheets.get('Log')._s.data = [[...oldHeader], oldHeader.map((h) => (h === 'Txn ID' ? 'old1' : ''))]; // copies: the sync edits the sheet rows in place
     w.db.transactions.push(tx('n1', { partyId: 'p1', createdAt: at(1), updatedAt: at(1) }));
     w.ctx.syncLog();
     const data = w.log();

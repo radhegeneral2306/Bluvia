@@ -198,3 +198,13 @@ Apps Script > Triggers (clock icon) > `syncLog` aur `refreshParties` ke saamne t
 ---
 
 Dikkat aaye to error ka poora message (ya Status tab ka `Last error`) mujhe bhej do.
+
+## 9. Naya: Area column (Area tag ke baad)
+
+App mein ab party ko **Area** diya ja sakta hai. Sheet mein bhi ye dikhega, lekin uske liye script ka naya version chahiye.
+
+1. **Area column naya hai; Code.gs naya version paste karna padega:** Sheet mein Extensions, phir Apps Script kholo. Purane `Code.gs` ka **poora text hata kar** naya `Code.gs` paste karo, **Save** dabao, phir sheet ke menu se **Bluvia Backup, phir Sync now** dabao. `appsscript.json` badalna nahi hai.
+2. **Parties tab:** `Address` ke baad `Area` column aayega (Refresh parties and daily summary dabane par, ya raat 2 baje).
+3. **Log tab:** `Area` naya column hai jo sheet ke **dahine (right) side** mein jud jaata hai. **Purani rows mein Area khali rahega** (unhe badla nahi jaata, kyunki Log sirf aage badhta hai). Nayi rows mein party ka area likha aayega. Entry mein area store nahi hota, isliye ye us waqt ka area hai jab entry sheet mein likhi gayi.
+4. Area ki jaankari ke liye script har 10 minute mein parties ki list dobara nahi padhti. Sirf tab padhti hai jab koi nayi entry likhni ho aur pichhle 10 minute mein list padhi na gayi ho, to free limit par asar bahut kam hai.
+5. Party ka area badalne par Log ki purani rows nahi badalti. Naya area agli nayi entry se dikhega.

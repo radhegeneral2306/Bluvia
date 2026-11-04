@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Plus, ShareNetwork, Trash, Receipt, FunnelSimple } from '@phosphor-icons/react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Plus, ShareNetwork, Trash, Receipt, FunnelSimple, ArrowsClockwise } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 import { listTxns, softDeleteTxn } from '../data/api.js';
 import { Page, Tabs, Spinner, Empty, useToast } from '../components/ui.jsx';
@@ -12,6 +12,7 @@ import { askLinkedDelete } from '../lib/linkedDelete.js';
 export default function Bills() {
   const { jarName, money } = useStore();
   const toast = useToast();
+  const nav = useNavigate();
   const [type, setType] = useState('bill');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -47,6 +48,11 @@ export default function Bills() {
   const actions = (row) => (
     <>
       {row.t.type === 'bill' && <button className="btn btn-sm" onClick={() => setShare(row.t)}><ShareNetwork size={18} />Share</button>}
+      {row.t.type === 'bill' && (
+        <button className="btn btn-sm !min-h-[44px] !min-w-[44px]" aria-label="Is bill ko dobara banao" onClick={() => nav(`/bill/new?party=${row.t.partyId}&repeat=${row.t.id}`)}>
+          <ArrowsClockwise size={18} /><span className="hidden min-[400px]:inline">Dobara</span>
+        </button>
+      )}
       <EditLink t={row.t} />
       <button className="btn btn-sm !text-red-600" aria-label="Delete" onClick={() => del(row.t)}><Trash size={18} /></button>
     </>

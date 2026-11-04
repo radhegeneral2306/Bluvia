@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Warning, WarningCircle, X, Tray } from '@phosphor-icons/react';
 import { fromPaise, toPaise } from '../lib/money.js';
@@ -24,7 +24,7 @@ export function ToastProvider({ children }) {
     <ToastCtx.Provider value={show}>
       {children}
       {t && (
-        <div className="fixed left-0 right-0 bottom-24 lg:bottom-6 z-50 flex justify-center px-4 pointer-events-none" role="status" aria-live="polite">
+        <div className="fixed left-0 right-0 bottom-[132px] lg:bottom-24 z-50 flex justify-center px-4 pointer-events-none" role="status" aria-live="polite">
           <button key={t.id} onClick={() => setT(null)}
             className={`animate-sheet pointer-events-auto max-w-md flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm font-medium shadow-lg shadow-slate-900/15 text-left ${cls}`}>
             <Icon size={20} weight="fill" className="shrink-0 mt-px" />
@@ -47,7 +47,7 @@ export function Page({ title, back, actions, children, narrow = true }) {
             <ArrowLeft size={22} />
           </button>
         )}
-        <h1 className="text-[22px] leading-7 font-semibold flex-1 truncate">{title}</h1>
+        <h1 className="text-[22px] leading-7 font-semibold flex-1 min-w-0 truncate">{title}</h1>
         {actions}
       </header>
       <div className="px-4 pb-36 lg:pb-12 space-y-4">{children}</div>
@@ -100,20 +100,44 @@ export function Avatar({ name = '', className = '' }) {
   return <span className={`w-10 h-10 shrink-0 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-sm font-semibold ${className}`} aria-hidden>{initials}</span>;
 }
 
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+/** Accessible dialog: focus moves in, Tab cycles inside, Esc closes, focus returns to the opener. */
 export function Modal({ open, onClose, title, children }) {
+  const panel = useRef(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose; // keep the latest onClose without re-running the focus effect
+  const titleId = useId();
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+    const opener = document.activeElement;
+    const el = panel.current;
+    const items = () => Array.from(el.querySelectorAll(FOCUSABLE)).filter((n) => n.offsetParent !== null);
+    (el.querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled])') || items()[0] || el).focus({ preventScroll: true });
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); return; }
+      if (e.key !== 'Tab') return;
+      const f = items();
+      if (!f.length) { e.preventDefault(); el.focus(); return; }
+      const first = f[0], last = f[f.length - 1], active = document.activeElement;
+      if (!el.contains(active)) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && (active === first || active === el)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
+    };
+  }, [open]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50" onClick={onClose} role="dialog" aria-modal="true" aria-label={title}>
-      <div className="animate-sheet bg-surface w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 pb-6 max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50" onClick={onClose}>
+      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
+        className="animate-sheet bg-surface w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 pb-6 max-h-[88vh] overflow-y-auto focus:outline-none" onClick={(e) => e.stopPropagation()}>
         <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mb-3 sm:hidden" />
         <div className="flex items-center mb-3">
-          <h2 className="font-semibold text-lg flex-1">{title}</h2>
+          <h2 id={titleId} className="font-semibold text-lg flex-1">{title}</h2>
           <button className="btn btn-ghost btn-sm !w-10 !px-0 rounded-full" onClick={onClose} aria-label="Band karo"><X size={20} /></button>
         </div>
         {children}
@@ -123,6 +147,9 @@ export function Modal({ open, onClose, title, children }) {
 }
 
 // ---------- inputs ----------
+const MAX_PAISE = 10000000000; // 100 crore rupees: bigger values lose float precision and are always typos
+const MAX_QTY = 1000000;
+
 /** value = integer paise. Shows rupees text, calls onChange(paise). */
 export function MoneyInput({ value, onChange, placeholder = '0', ...rest }) {
   const [text, setText] = useState(value ? fromPaise(value).replace(/\.00$/, '') : '');
@@ -132,7 +159,7 @@ export function MoneyInput({ value, onChange, placeholder = '0', ...rest }) {
   }, [value]);
   return (
     <input className="input num" inputMode="decimal" placeholder={placeholder} value={text} {...rest}
-      onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, ''); setText(v); onChange(toPaise(v)); }} />
+      onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, ''); const p = toPaise(v); if (p > MAX_PAISE) return; setText(v); onChange(p); }} />
   );
 }
 
@@ -147,6 +174,7 @@ export function QtyInput({ value, onChange, integer = true, ...rest }) {
     <input className="input num" inputMode={integer ? 'numeric' : 'decimal'} placeholder="0" value={text} {...rest}
       onChange={(e) => {
         const v = e.target.value.replace(integer ? /[^0-9]/g : /[^0-9.]/g, '');
+        if ((Number(v) || 0) > MAX_QTY) return;
         setText(v); onChange(Number(v) || 0);
       }} />
   );

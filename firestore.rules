@@ -1,6 +1,7 @@
 rules_version = '2';
 // Deny everything by default. Only the owner account(s) listed in isOwner() can read/write.
 // Put your own Firebase Auth UID inside the quotes below (see SETUP.md). For more users: ['UID1', 'UID2']
+// Nothing is ever hard-deleted by the app (entries are soft-deleted), so every delete is denied.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -8,54 +9,83 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid in ['OWNER_UID'];
     }
     function d() { return request.resource.data; }
-    // field is absent OR is a number
-    function numOrAbsent(f) { return !(f in d()) || d()[f] is number; }
+
+    // ---- value helpers ----
+    // Money is stored as whole paise (integers). Floats, NaN and Infinity are not ints, so they are rejected.
+    function inRange(v) { return v is int && v > -1000000000000 && v < 1000000000000; }
+    function money(f) { return !(f in d()) || inRange(d()[f]); }
+    function moneyPos(f) { return !(f in d()) || (inRange(d()[f]) && d()[f] >= 0); }
     function strOrAbsent(f) { return !(f in d()) || d()[f] is string; }
+    function noteOk() { return !('note' in d()) || (d().note is string && d().note.size() < 2000); }
+    function qtyOk() { return !('qty' in d()) || (d().qty is int && d().qty >= 0 && d().qty < 1000000000); }
 
     match /settings/{id} {
       allow read: if isOwner();
-      allow write: if isOwner()
-        && numOrAbsent('nextBillNo') && numOrAbsent('billNoPad')
+      allow create, update: if isOwner()
+        && (!('nextBillNo' in d()) || (d().nextBillNo is int && d().nextBillNo >= 1 && d().nextBillNo < 1000000000000))
+        && (!('billNoPad' in d()) || (d().billNoPad is int && d().billNoPad >= 0 && d().billNoPad <= 20))
         && strOrAbsent('businessName') && strOrAbsent('billPrefix') && strOrAbsent('currency');
+      allow delete: if false;
     }
 
     match /jarTypes/{id} {
       allow read: if isOwner();
-      allow write: if isOwner() && numOrAbsent('defaultRate') && numOrAbsent('defaultDeposit') && strOrAbsent('name');
+      allow create, update: if isOwner() && moneyPos('defaultRate') && moneyPos('defaultDeposit') && strOrAbsent('name');
+      allow delete: if false;
     }
 
     match /items/{id} {
       allow read: if isOwner();
-      allow write: if isOwner() && numOrAbsent('defaultRate') && strOrAbsent('name');
+      allow create, update: if isOwner() && moneyPos('defaultRate') && strOrAbsent('name');
+      allow delete: if false;
     }
 
     match /parties/{id} {
       allow read: if isOwner();
-      allow write: if isOwner()
+      allow create, update: if isOwner()
         && strOrAbsent('name')
-        && numOrAbsent('openingBalance') && numOrAbsent('openingDeposit')
-        && numOrAbsent('outstanding') && numOrAbsent('depositBalance');
+        && money('openingBalance') && money('openingDeposit')
+        && money('outstanding') && money('depositBalance')
+        && noteOk();
+      allow delete: if false;
+    }
+
+    // Entry types can change inside their own group only (jarReturn <-> jarGiven, deposit kinds), never bill <-> receipt etc.
+    function txnGroup(t) {
+      return t == 'bill' ? 'bill'
+        : t == 'receipt' ? 'receipt'
+        : t in ['jarReturn', 'jarGiven'] ? 'jar'
+        : t in ['depositTaken', 'depositRefund', 'depositAdjust'] ? 'deposit'
+        : 'adjustment';
+    }
+    function validTxn() {
+      return d().type in ['bill', 'receipt', 'jarReturn', 'jarGiven', 'depositTaken', 'depositRefund', 'depositAdjust', 'adjustment']
+        && d().partyId is string && d().partyId.size() > 0
+        && d().dateKey is string && d().dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && d().deleted is bool
+        && (d().type != 'bill' || inRange(d().total))
+        && (!(d().type in ['receipt', 'depositTaken', 'depositRefund', 'depositAdjust', 'adjustment']) || inRange(d().amount))
+        && (!(d().type in ['receipt', 'depositTaken', 'depositRefund', 'depositAdjust']) || d().amount >= 0)
+        && (!(d().type in ['jarReturn', 'jarGiven']) || (d().qty is int))
+        && qtyOk() && noteOk()
+        && money('amount')
+        && moneyPos('total') && moneyPos('subTotal') && moneyPos('discount') && moneyPos('extraCharge')
+        && money('prevOutstanding') && money('newOutstanding') && moneyPos('depositCollectedInBill');
     }
 
     match /transactions/{id} {
       allow read: if isOwner();
-      allow write: if isOwner()
-        && d().type in ['bill', 'receipt', 'jarReturn', 'jarGiven', 'depositTaken', 'depositRefund', 'depositAdjust', 'adjustment']
-        && d().partyId is string
-        && d().dateKey is string
-        && (d().type != 'bill' || d().total is number)
-        && (!(d().type in ['receipt', 'depositTaken', 'depositRefund', 'depositAdjust', 'adjustment']) || d().amount is number)
-        && (!(d().type in ['jarReturn', 'jarGiven']) || d().qty is number)
-        && numOrAbsent('amount') && numOrAbsent('qty') && numOrAbsent('total') && numOrAbsent('subTotal')
-        && numOrAbsent('discount') && numOrAbsent('extraCharge')
-        && numOrAbsent('prevOutstanding') && numOrAbsent('newOutstanding') && numOrAbsent('depositCollectedInBill');
+      allow create: if isOwner() && validTxn();
+      allow update: if isOwner() && validTxn() && txnGroup(d().type) == txnGroup(resource.data.type);
+      allow delete: if false;
     }
 
     match /stats/{id} {
       allow read: if isOwner();
-      allow write: if isOwner()
-        && numOrAbsent('totalOutstanding') && numOrAbsent('totalDepositHeld')
-        && numOrAbsent('sales') && numOrAbsent('collection') && numOrAbsent('billsCount');
+      allow create, update: if isOwner()
+        && money('totalOutstanding') && money('totalDepositHeld')
+        && money('sales') && money('collection') && money('billsCount');
+      allow delete: if false;
     }
 
     // everything else: denied

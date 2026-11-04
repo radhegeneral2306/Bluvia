@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { WarningCircle } from '@phosphor-icons/react';
 import { auth } from '../lib/firebase.js';
 
@@ -13,16 +13,20 @@ export default function Login() {
     e.preventDefault();
     setBusy(true); setErr('');
     try {
-      await setPersistence(auth, browserLocalPersistence); // stay signed in
+      // No setPersistence() call: the default persistence keeps the user signed in and is safe across tabs/PWA windows.
       await signInWithEmailAndPassword(auth, email.trim(), pw);
     } catch (ex) {
       const m = {
         'auth/invalid-credential': 'Email ya password galat hai.',
+        'auth/wrong-password': 'Email ya password galat hai.',
+        'auth/user-not-found': 'Email ya password galat hai.',
+        'auth/invalid-login-credentials': 'Email ya password galat hai.',
         'auth/invalid-email': 'Email sahi nahi hai.',
+        'auth/user-disabled': 'Ye account band kar diya gaya hai.',
         'auth/too-many-requests': 'Bahut zyada try ho gaye. Thodi der baad try karo.',
         'auth/network-request-failed': 'Internet nahi hai. Login ke liye internet chahiye.',
       };
-      setErr(m[ex.code] || `Login nahi hua (${ex.code || ex.message})`);
+      setErr(m[ex.code] || 'Login nahi ho paya. Thodi der baad dobara try karo.');
     } finally { setBusy(false); }
   }
   return (

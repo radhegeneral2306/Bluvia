@@ -1,6 +1,9 @@
 // Money is always stored as INTEGER paise. Never use float rupees in stored data.
 
-/** "123.45" | 123.45 -> 12345 (integer paise). Invalid -> 0. Uses string maths, no float drift. */
+/** Largest amount the app accepts anywhere: 100 crore rupees, in paise. Keeps every sum far below 2^53. */
+export const MAX_PAISE = 10000000000;
+
+/** "123.45" | 123.45 -> 12345 (integer paise). Invalid -> 0. Uses string maths, no float drift. Clamped to +-MAX_PAISE. */
 export function toPaise(value) {
   if (value === '' || value == null) return 0;
   const s = String(value).trim().replace(/,/g, '');
@@ -9,6 +12,7 @@ export function toPaise(value) {
   const [i = '', f = ''] = s.replace('-', '').split('.');
   let p = Number(i || 0) * 100 + Number((f + '00').slice(0, 2));
   if (f.length > 2 && f[2] >= '5') p += 1; // round half up on the 3rd decimal
+  if (!(p <= MAX_PAISE)) p = MAX_PAISE; // absurd input (also covers precision loss on very long digit strings)
   return neg ? -p : p;
 }
 

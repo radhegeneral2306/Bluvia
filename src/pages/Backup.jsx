@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { DownloadSimple, FileXls, UploadSimple, Warning, ClockCounterClockwise } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 import { Page, useToast } from '../components/ui.jsx';
-import { exportAll, downloadJson, downloadExcel, validateBackup, restoreAll, markBackupDone } from '../lib/backup.js';
+import { exportAll, downloadJson, downloadExcel, previewRestore, restoreAll, markBackupDone, confirmHeavyRun } from '../lib/backup.js';
+import { getReads } from '../lib/reads.js';
 import { dateKeyOf } from '../lib/dates.js';
 import { computeRecalc, applyRecalc } from '../lib/recalcDb.js';
 
 export default function Backup() {
-  const { settings, online } = useStore();
+  const { settings, online, parties } = useStore();
   const toast = useToast();
   const [busy, setBusy] = useState('');
   const [pending, setPending] = useState(null);
@@ -15,6 +16,7 @@ export default function Backup() {
 
   async function doExport(kind) {
     if (!online) return toast('Backup ke liye internet chahiye', 'err');
+    if (!confirmHeavyRun('Backup')) return;
     setBusy(`${kind} bana raha hai…`);
     try {
       const data = await exportAll((c) => setBusy(`${c} padh raha hai…`));
@@ -29,19 +31,21 @@ export default function Backup() {
     const file = e.target.files?.[0]; e.target.value = '';
     if (!file) return;
     try {
-      const obj = JSON.parse(await file.text());
-      setPending({ obj, counts: validateBackup(obj), name: file.name });
-    } catch (ex) { toast(ex.message || 'File padh nahi payi', 'err'); }
+      let obj;
+      try { obj = JSON.parse(await file.text()); } catch { throw new Error('File padh nahi payi. Yeh sahi JSON file nahi hai.'); }
+      setBusy('File check ho rahi hai…');
+      setPending({ obj, preview: await previewRestore(obj), name: file.name });
+    } catch (ex) { toast(ex.message || 'File padh nahi payi', 'err', 6000); } finally { setBusy(''); }
   }
   async function doRestore() {
-    if (!window.confirm('PAKKA? Backup ke documents Firestore mein wapas likhe jayenge (same ID wale overwrite honge). Bill number counter bhi backup wala ho jayega. Restore ke baad balances apne aap recalculate honge (reads lagenge).')) return;
+    if (!window.confirm('PAKKA? Backup ke documents Firestore mein wapas likhe jayenge (same ID wale overwrite honge). Bill number counter kabhi peeche nahi jayega. Jo jar types/items backup mein nahi hain wo inactive ho jayenge. Restore ke baad balances apne aap recalculate honge (bahut reads lagenge).')) return;
     setBusy('Restore ho raha hai…');
     try {
-      const n = await restoreAll(pending.obj, (a, b) => setBusy(`Restore ${a}/${b}…`));
+      const { restored: n, deactivated } = await restoreAll(pending.obj, (a, b) => setBusy(`Restore ${a}/${b}…`));
       setBusy('Balances dobara check ho rahe hain…');
       const rc = await computeRecalc();
       if (rc.diffs.length) await applyRecalc(rc);
-      toast(`${n} records restore ho gaye; balances theek kiye`); setPending(null);
+      toast(`${n} records restore ho gaye; balances theek kiye${deactivated ? `; ${deactivated} purane jar type/item inactive kiye` : ''}`, 'ok', 6000); setPending(null);
     } catch (e) { toast(`Restore fail: ${e.message}`, 'err', 8000); } finally { setBusy(''); }
   }
 
@@ -57,7 +61,7 @@ export default function Backup() {
         </div>
         <p className="flex gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">
           <Warning size={20} weight="fill" className="shrink-0 mt-px" />
-          <span>Backup poora data padhta hai. Jitni zyada entries, utni zyada Firestore reads (free limit 50,000/din). Hafte mein ek baar kaafi hai.</span>
+          <span>Backup poora data padhta hai, isliye bahut reads lagte hain (kam se kam {parties.length} parties ki reads aur saari entries ki, free limit 50,000/din). Aaj is device par: <b className="num">{getReads().toLocaleString('en-IN')}</b> reads. Hafte mein ek baar kaafi hai.</span>
         </p>
         <div className="grid gap-2">
           <button className="btn btn-primary w-full" disabled={!!busy} onClick={() => doExport('json')}><DownloadSimple size={20} />Full backup (JSON)</button>
@@ -69,11 +73,16 @@ export default function Backup() {
       <section className="card p-4 space-y-3">
         <h2 className="font-semibold flex items-center gap-2"><UploadSimple size={20} />Restore (JSON se)</h2>
         <p className="text-xs text-slate-500">Sirf Bluvia ki apni JSON backup file chunna. Restore purane documents ko overwrite karta hai; jo documents backup mein nahi hain wo delete nahi hote.</p>
-        <input type="file" accept="application/json,.json" onChange={pickFile} className="block w-full text-sm text-slate-600 file:mr-3 file:min-h-[44px] file:rounded-xl file:border file:border-slate-200 file:bg-surface file:px-4 file:font-semibold file:text-slate-800" />
+        <div className="min-w-0 overflow-hidden">
+          <label htmlFor="restore-file" className="sr-only">Backup JSON file chuno</label>
+          <input id="restore-file" type="file" accept="application/json,.json" disabled={!!busy} onChange={pickFile} className="block w-full max-w-full min-w-0 text-sm text-slate-600 file:mr-3 file:min-h-[44px] file:rounded-xl file:border file:border-slate-200 file:bg-surface file:px-4 file:font-semibold file:text-slate-800" />
+        </div>
         {pending && (
           <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900 space-y-2">
             <b>{pending.name}</b>
-            <ul className="list-disc ml-5 num">{Object.entries(pending.counts).map(([k, v]) => <li key={k}>{k}: {v}</li>)}</ul>
+            <ul className="list-disc ml-5 num">{Object.entries(pending.preview).map(([k, v]) => (
+              <li key={k}>{k}: {v.total}{v.overwrite !== undefined ? ` (${v.overwrite} purane overwrite, ${v.isNew} naye)` : ' (purane overwrite ya naye judenge)'}</li>
+            ))}</ul>
             <div className="flex gap-2"><button className="btn flex-1" onClick={() => setPending(null)}>Cancel</button><button className="btn btn-danger flex-1" disabled={!!busy} onClick={doRestore}>Restore karo</button></div>
           </div>
         )}

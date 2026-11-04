@@ -3,7 +3,7 @@ import {
   effectOf, planChange, planChanges, negativeJarWarnings, openingState, openingDelta,
   recalculate, diffRecalc,
 } from '../src/lib/ledger.js';
-import { toPaise, fromPaise, fmtMoney, lineAmount, billTotals } from '../src/lib/money.js';
+import { toPaise, fromPaise, fmtMoney, lineAmount, billTotals, MAX_PAISE } from '../src/lib/money.js';
 
 // ---- tiny in-memory "database" that applies plans exactly like Firestore increments ----
 function newParty(over = {}) {
@@ -355,5 +355,25 @@ describe('money & rounding', () => {
     let s = 0;
     for (let i = 0; i < 1000; i++) s += toPaise('0.10');
     expect(s).toBe(10000);
+  });
+});
+
+describe('amount cap', () => {
+  it('MAX_PAISE is 100 crore rupees', () => {
+    expect(MAX_PAISE).toBe(10000000000);
+    expect(Number.isSafeInteger(MAX_PAISE * 1000)).toBe(true);
+  });
+  it('values up to the cap pass through unchanged', () => {
+    expect(toPaise('99999999.99')).toBe(9999999999);
+    expect(toPaise('100000000')).toBe(MAX_PAISE);
+    expect(toPaise('-100000000')).toBe(-MAX_PAISE);
+  });
+  it('absurd input is clamped, never loses precision or becomes unsafe', () => {
+    expect(toPaise('100000000.01')).toBe(MAX_PAISE);
+    expect(toPaise('1000000000000000')).toBe(MAX_PAISE); // the 1e15 case from QA
+    expect(toPaise('99999999999999999999999999')).toBe(MAX_PAISE);
+    expect(toPaise('-99999999999999999999.99')).toBe(-MAX_PAISE);
+    expect(toPaise(1e21)).toBe(0); // "1e+21" has an exponent, rejected as invalid input
+    expect(Number.isSafeInteger(toPaise('9'.repeat(40)))).toBe(true);
   });
 });

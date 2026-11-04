@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../data/store.jsx';
 import { listTxns, softDeleteTxn } from '../data/api.js';
+import { askLinkedDelete } from '../lib/linkedDelete.js';
+import { dueView } from '../lib/advance.js';
 import { Receipt, HandCoins, ArrowUUpLeft, Bank, ShareNetwork, Phone, WhatsappLogo, Trash, ListBullets, FilePdf } from '@phosphor-icons/react';
 import { Page, Tabs, Spinner, Empty, Modal, Avatar, useToast } from '../components/ui.jsx';
 import TxnRow, { EditLink } from '../components/TxnRow.jsx';
@@ -50,9 +52,11 @@ export default function PartyDetail() {
   async function del(t) {
     if (!window.confirm('Is entry ko delete karna hai? (Balance wapas theek ho jayega, "Deleted entries" mein restore ho sakti hai)')) return;
     try {
-      await softDeleteTxn(t);
-      setEntries((p) => p.filter((x) => x.id !== t.id));
-      toast('Delete ho gaya');
+      const { withLinked, linked } = await askLinkedDelete(t);
+      await softDeleteTxn(t, { withLinked });
+      const gone = new Set([t.id, ...linked.map((l) => l.id)]);
+      setEntries((p) => p.filter((x) => !gone.has(x.id)));
+      toast(withLinked ? 'Bill aur uski linked entries delete ho gayi' : 'Delete ho gaya');
     } catch (e) { toast(e.message, 'err'); }
   }
 
@@ -85,23 +89,23 @@ export default function PartyDetail() {
           <Avatar name={party.name} className="!w-12 !h-12 !text-base" />
           <div className="min-w-0">
             <div className="text-sm text-slate-600 truncate">{party.phone || 'No phone'}</div>
-            {party.address && <div className="text-xs text-slate-500 truncate">{party.address}</div>}
+            {party.address && <div className="text-xs text-slate-500 break-words line-clamp-2">{party.address}</div>}
           </div>
         </div>
-        <div className="grid grid-cols-[1.4fr_1fr_1.2fr] gap-3">
-          <div><div className="text-[13px] text-slate-500">Baaki</div><div className={`font-semibold text-2xl num ${(party.outstanding || 0) > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{money(party.outstanding || 0)}</div></div>
-          <div><div className="text-[13px] text-slate-500">Jars</div><div className="font-semibold text-2xl num">{totalJars}</div></div>
-          <div><div className="text-[13px] text-slate-500">Deposit</div><div className="font-semibold text-2xl num">{money(party.depositBalance || 0)}</div></div>
+        <div className="grid grid-cols-1 min-[340px]:grid-cols-[1.4fr_1fr_1.2fr] gap-3">
+          <div className="min-w-0"><div className="text-[13px] text-slate-500">{dueView(party.outstanding).label}</div><div className={`font-semibold text-2xl num break-words ${(party.outstanding || 0) === 0 ? 'text-slate-800' : dueView(party.outstanding).tone}`}>{money(dueView(party.outstanding).amount)}</div></div>
+          <div className="min-w-0"><div className="text-[13px] text-slate-500">Jars</div><div className="font-semibold text-2xl num break-words">{totalJars}</div></div>
+          <div className="min-w-0"><div className="text-[13px] text-slate-500">Deposit</div><div className="font-semibold text-2xl num break-words">{money(party.depositBalance || 0)}</div></div>
         </div>
         {totalJars !== 0 && <div className="text-xs text-slate-500 mt-3">{jarTypes.filter((j) => jarBal[j.id]).map((j) => `${jarBal[j.id]} × ${j.name}`).join(', ')}</div>}
       </div>
 
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 min-[340px]:grid-cols-4 gap-2">
         {[[q('/bill/new'), Receipt, 'Bill', true], [q('/entry/new/receipt'), HandCoins, 'Receipt'], [q('/entry/new/jar'), ArrowUUpLeft, 'Jar'], [q('/entry/new/deposit'), Bank, 'Deposit']].map(([to, Icon, label, primary]) => (
           <Link key={label} to={to} className={`btn flex-col !gap-1 !py-2 !px-1 min-h-[64px] text-xs ${primary ? 'btn-primary' : ''}`}><Icon size={22} />{label}</Link>
         ))}
       </div>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 min-[340px]:grid-cols-3 gap-2">
         <button className="btn btn-sm" onClick={() => setStmtOpen(true)}><ShareNetwork size={18} />Statement</button>
         <a className={`btn btn-sm ${party.phone ? '' : 'opacity-50 pointer-events-none'}`} href={`tel:${party.phone}`}><Phone size={18} />Call</a>
         <a className={`btn btn-sm ${party.phone ? '' : 'opacity-50 pointer-events-none'}`} target="_blank" rel="noreferrer" href={waLink(party.phone, '', settings.countryCode)}><WhatsappLogo size={18} />WhatsApp</a>

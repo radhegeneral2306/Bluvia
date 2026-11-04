@@ -12,6 +12,7 @@ export function pdfMoney(p, cur) {
 
 export function waLink(phone, text, countryCode = '91') {
   let d = String(phone || '').replace(/\D/g, '');
+  if (d.length === 11 && d.startsWith('0')) d = d.slice(1); // 09876543210 -> 9876543210
   if (d.length === 10 && countryCode) d = countryCode + d;
   return `https://wa.me/${d}?text=${encodeURIComponent(text)}`;
 }
@@ -33,10 +34,15 @@ export function billText({ bill, party, settings, jarName, money }) {
   if (bill.extraCharge) L.push(`Extra: ${money(bill.extraCharge)}`);
   L.push(`*Total: ${money(bill.total)}*`);
   if (bill.depositCollectedInBill) L.push(`Deposit received: ${money(bill.depositCollectedInBill)}`);
-  L.push('');
-  L.push(`Previous due: ${money(bill.prevOutstanding || 0)}`);
-  L.push(`*Total due now: ${money(bill.newOutstanding ?? (bill.prevOutstanding || 0) + bill.total)}*`);
-  if (bill.jarBalanceAfter) L.push(`Jars with you: ${jarsText(bill.jarBalanceAfter, jarName)}`);
+  if (settings.showDuesOnPdf !== false) { // same switch as the PDF: Settings > show previous / total due lines
+    const prev = bill.prevOutstanding || 0;
+    const now = bill.newOutstanding ?? prev + bill.total;
+    L.push('');
+    if (prev < 0) L.push(`Advance: ${money(-prev)}`);
+    else if (prev > 0) L.push(`Previous due: ${money(prev)}`);
+    L.push(now < 0 ? `*Advance left: ${money(-now)}*` : `*Total due now: ${money(now)}*`);
+    if (bill.jarBalanceAfter) L.push(`Jars with you: ${jarsText(bill.jarBalanceAfter, jarName)}`);
+  }
   if (settings.footerNote) { L.push(''); L.push(settings.footerNote); }
   return L.join('\n');
 }

@@ -27,7 +27,7 @@ export default function JarReport() {
   }, [rows, types]);
 
   const th = (key, label) => (
-    <th key={key} className={`px-3 py-2.5 cursor-pointer select-none whitespace-nowrap text-xs font-semibold uppercase tracking-wide ${key === 'name' ? 'text-left' : 'text-right'} ${sort.key === key ? 'text-brand-700' : ''}`} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : 1 }))} aria-sort={sort.key === key ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}>
+    <th key={key} className={`${key === 'name' ? 'sticky left-0 z-10 bg-slate-100 max-w-[8.5rem]' : ''} px-3 py-2.5 cursor-pointer select-none whitespace-nowrap text-xs font-semibold uppercase tracking-wide ${key === 'name' ? 'text-left' : 'text-right'} ${sort.key === key ? 'text-brand-700' : ''}`} onClick={() => setSort((s) => ({ key, dir: s.key === key ? -s.dir : 1 }))} aria-sort={sort.key === key ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}>
       <span className="inline-flex items-center gap-1">{label}{sort.key === key && (sort.dir > 0 ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />)}</span>
     </th>
   );
@@ -51,7 +51,10 @@ export default function JarReport() {
   return (
     <Page title="Jar Report" back="/reports" narrow={false}>
       {!rows.length ? <Empty icon={Drop} title="Koi jar baahar nahi">Kisi party ke paas jar ya deposit nahi hai.</Empty> : (
-        <div className="card overflow-x-auto">
+        <>
+        <p className="sm:hidden text-xs text-slate-500 px-1">Side mein scroll karke Deposit aur baaki columns dekho.</p>
+        <div className="relative">
+        <div className="card overflow-x-auto" tabIndex={0} role="region" aria-label="Jar report table, side mein scroll hota hai">
           <table className="w-full text-sm num">
             <thead className="bg-slate-100 text-slate-600 sticky top-0">
               <tr>{th('name', 'Party')}{types.map((j) => th(j.id, j.name))}{th('total', 'Total')}{th('deposit', 'Deposit')}</tr>
@@ -59,14 +62,14 @@ export default function JarReport() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.p.id} className="border-t border-slate-100">
-                  <td className="px-3 py-3 font-medium text-left">{r.name}</td>
+                  <td className="sticky left-0 z-10 bg-surface px-3 py-3 font-medium text-left max-w-[8.5rem] truncate" title={r.name}>{r.name}</td>
                   {types.map((j) => <td key={j.id} className={`px-3 py-3 text-right ${((r.p.jarBalance || {})[j.id] || 0) < 0 ? 'text-red-600' : ''}`}>{(r.p.jarBalance || {})[j.id] || 0}</td>)}
                   <td className="px-3 py-3 text-right font-semibold">{r.total}</td>
                   <td className="px-3 py-3 text-right">{money(r.deposit)}</td>
                 </tr>
               ))}
               <tr className="border-t-2 border-slate-300 bg-brand-50 text-brand-900 font-bold">
-                <td className="px-3 py-3">Total</td>
+                <td className="sticky left-0 z-10 bg-brand-50 px-3 py-3">Total</td>
                 {types.map((j) => <td key={j.id} className="px-3 py-3 text-right">{totals.by[j.id] || 0}</td>)}
                 <td className="px-3 py-3 text-right">{totals.total}</td>
                 <td className="px-3 py-3 text-right">{money(totals.deposit)}</td>
@@ -74,8 +77,11 @@ export default function JarReport() {
             </tbody>
           </table>
         </div>
+        <div className="pointer-events-none absolute right-px top-px bottom-px w-6 rounded-r-2xl bg-gradient-to-l from-surface to-transparent sm:hidden" aria-hidden />
+        </div>
+        </>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 min-[340px]:grid-cols-2 gap-3">
         <button className="btn" onClick={async () => { const r = await shareText(text(), 'Jar report'); if (r === 'copied') toast('Text copy ho gaya'); }}><ShareNetwork size={20} />Text share</button>
         <button className="btn" onClick={excel}><FileXls size={20} />Excel</button>
       </div>

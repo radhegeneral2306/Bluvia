@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Plus, MagnifyingGlass, UsersThree } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 import { Page, Empty, Badge, Avatar } from '../components/ui.jsx';
+import { dueView } from '../lib/advance.js';
 
 export default function Parties() {
   const { parties, money, jarTypes } = useStore();
@@ -28,16 +29,17 @@ export default function Parties() {
           {parties.length ? 'Dusra naam ya phone try karo.' : 'Party add karke bill banana shuru karo.'}
         </Empty>
       )}
-      <div className="grid gap-2 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
         {list.map((p) => (
-          <Link key={p.id} to={`/party/${p.id}`} className="card p-3 flex items-center gap-3 min-h-[68px] active:bg-slate-100 transition-colors">
+          <Link key={p.id} to={`/party/${p.id}`} className="card p-3 flex items-center gap-3 min-h-[68px] min-w-0 active:bg-slate-100 transition-colors">
             <Avatar name={p.name} />
             <div className="flex-1 min-w-0">
-              <div className="font-semibold truncate">{p.name} {p.active === false && <Badge tone="amber">Inactive</Badge>}</div>
+              <div className="font-semibold truncate">{p.name}</div>
+              {p.active === false && <div className="mt-0.5"><Badge tone="amber">Inactive</Badge></div>}
               <div className="text-xs text-slate-500 truncate">{p.phone || 'No phone'}{jarText(p) ? `, Jars: ${jarText(p)}` : ''}</div>
             </div>
-            <div className="text-right">
-              <div className={`font-semibold num ${(p.outstanding || 0) > 0 ? 'text-red-600' : (p.outstanding || 0) < 0 ? 'text-emerald-600' : 'text-slate-500'}`}>{money(p.outstanding || 0)}</div>
+            <div className="text-right shrink-0 max-w-[45%]">
+              <div className={`font-semibold num break-words ${(p.outstanding || 0) === 0 ? 'text-slate-500' : dueView(p.outstanding).tone}`}>{(p.outstanding || 0) < 0 ? `Advance ${money(-p.outstanding)}` : money(p.outstanding || 0)}</div>
               {!!p.depositBalance && <div className="text-xs text-slate-500 num">Dep {money(p.depositBalance)}</div>}
             </div>
           </Link>

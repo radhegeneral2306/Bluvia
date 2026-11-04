@@ -1,3 +1,4 @@
+import { createContext, useContext } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import { CloudSlash, ArrowsClockwise } from '@phosphor-icons/react';
@@ -35,9 +36,23 @@ function ConfigMissing() {
   );
 }
 
+// Service worker registration lives at the App root so it installs on the very first visit (also on the login screen).
+const SwCtx = createContext({ needRefresh: false, update: () => {} });
+
+function UpdateBar() {
+  const { needRefresh, update } = useContext(SwCtx);
+  if (!needRefresh) return null;
+  return (
+    <div className="bg-brand-600 text-white text-sm px-4 py-2 flex items-center justify-center gap-3" role="status">
+      <ArrowsClockwise size={18} weight="bold" className="shrink-0" />
+      Naya version available hai
+      <button className="btn btn-sm !min-h-[36px] !bg-white !text-[#01616a] !border-white" onClick={update}>Update karo</button>
+    </div>
+  );
+}
+
 function Banners() {
   const { online } = useStore();
-  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
   return (
     <>
       {!online && (
@@ -46,12 +61,7 @@ function Banners() {
           <span>Offline hain. Receipt, jar aur deposit save honge aur net aane par sync honge. Bill ke liye internet chahiye.</span>
         </div>
       )}
-      {needRefresh && (
-        <div className="bg-brand-700 text-white text-sm px-3 py-2 flex items-center justify-center gap-3">
-          Naya version available hai
-          <button className="btn btn-sm !min-h-[32px] !bg-surface !text-brand-700" onClick={() => updateServiceWorker(true)}>Update karo</button>
-        </div>
-      )}
+      <UpdateBar />
     </>
   );
 }
@@ -59,7 +69,7 @@ function Banners() {
 function Gate() {
   const { user, ready, accessError } = useStore();
   if (user === undefined) return <div className="p-4 max-w-2xl mx-auto"><Spinner text="Starting" rows={3} /></div>;
-  if (!user) return <Login />;
+  if (!user) return <><UpdateBar /><Login /></>;
   if (accessError) {
     return (
       <div className="p-6 max-w-lg mx-auto">
@@ -99,12 +109,15 @@ function Gate() {
 }
 
 export default function App() {
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW();
   if (!configured) return <ConfigMissing />;
   return (
-    <ToastProvider>
-      <StoreProvider>
-        <Gate />
-      </StoreProvider>
-    </ToastProvider>
+    <SwCtx.Provider value={{ needRefresh, update: () => updateServiceWorker(true) }}>
+      <ToastProvider>
+        <StoreProvider>
+          <Gate />
+        </StoreProvider>
+      </ToastProvider>
+    </SwCtx.Provider>
   );
 }

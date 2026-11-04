@@ -135,10 +135,12 @@ export async function createBill(input) {
     throw err;
   }
   const { depositAmount = 0, depositJarTypeId = null, returns = {}, ...bill } = input;
-  return runTransaction(db, async (tx) => {
+  try {
+  return await runTransaction(db, async (tx) => {
     const sRef = doc(db, 'settings', 'main');
     const pRef = doc(db, 'parties', bill.partyId);
     const [sSnap, pSnap] = await Promise.all([tx.get(sRef), tx.get(pRef)]);
+    addReads(2); // settings + party read inside the transaction (counted again if Firestore retries)
     const s = sSnap.data() || {};
     const p = pSnap.data() || {};
     const seq = s.nextBillNo || 1;
@@ -179,6 +181,17 @@ export async function createBill(input) {
     writePlan(tx, planChanges(pairs));
     return { id: billRef.id, billNo, prevOutstanding, jarBalanceAfter: jarAfter };
   });
+  } catch (e) {
+    if (e?.code === 'OFFLINE_BILL') throw e;
+    const connection = ['unavailable', 'deadline-exceeded', 'failed-precondition'].includes(e?.code)
+      || /connection|network|offline|timed? ?out/i.test(e?.message || '');
+    if (connection) {
+      const err = new Error('Internet slow ya band hai. Bill save nahi hua, thodi der baad dobara try karo.');
+      err.code = 'BILL_CONNECTION';
+      throw err;
+    }
+    throw e;
+  }
 }
 
 /** Re-read the entry from the server (when online) so a stale form can never double-apply a delta. */
@@ -204,11 +217,25 @@ export async function updateTxn(oldT0, patch) {
   writePlan(b, planChange(oldT, newT));
   return commitSafe(b.commit());
 }
-export async function softDeleteTxn(oldT0) {
+/** Non-deleted entries that were created together with a bill (deposit taken, jars returned). */
+export async function findLinked(billId) {
+  const snap = await qDocs(query(collection(db, 'transactions'), where('linkedBillId', '==', billId), where('deleted', '==', false)));
+  return snap.docs.map(withId);
+}
+
+/** Soft delete. With { withLinked: true } the deposit/jar-return entries made with the same bill go too (one batch). */
+export async function softDeleteTxn(oldT0, { withLinked = false } = {}) {
   const oldT = await fresh(oldT0);
   const b = writeBatch(db);
+  const pairs = [[oldT, { ...oldT, deleted: true }]];
   b.update(doc(db, 'transactions', oldT.id), { deleted: true, deletedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-  writePlan(b, planChange(oldT, { ...oldT, deleted: true }));
+  if (withLinked && oldT.type === 'bill') {
+    for (const l of await findLinked(oldT.id)) {
+      b.update(doc(db, 'transactions', l.id), { deleted: true, deletedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      pairs.push([l, { ...l, deleted: true }]);
+    }
+  }
+  writePlan(b, planChanges(pairs));
   return commitSafe(b.commit());
 }
 export async function restoreTxn(oldT0) {

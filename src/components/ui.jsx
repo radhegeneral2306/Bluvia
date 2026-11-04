@@ -25,7 +25,7 @@ export function ToastProvider({ children }) {
     <ToastCtx.Provider value={show}>
       {children}
       {t && (
-        <div className="fixed left-0 right-0 bottom-[132px] lg:bottom-24 z-50 flex justify-center px-4 pointer-events-none" role="status" aria-live="polite">
+        <div className="fixed left-0 right-0 bottom-[calc(140px+env(safe-area-inset-bottom))] lg:bottom-24 z-50 flex justify-center px-4 pointer-events-none" role="status" aria-live="polite">
           <button key={t.id} onClick={() => setT(null)}
             className={`animate-sheet pointer-events-auto max-w-md flex items-start gap-2.5 rounded-xl px-4 py-3 text-sm font-medium shadow-lg shadow-slate-900/15 text-left ${cls}`}>
             <Icon size={20} weight="fill" className="shrink-0 mt-px" />
@@ -51,14 +51,14 @@ export function Page({ title, back, actions, children, narrow = true }) {
         <h1 className="text-[22px] leading-7 font-semibold flex-1 min-w-0 truncate">{title}</h1>
         {actions}
       </header>
-      <div className="px-4 pb-36 lg:pb-12 space-y-4">{children}</div>
+      <div className="px-4 pb-[calc(11rem+env(safe-area-inset-bottom))] lg:pb-12 space-y-4">{children}</div>
     </div>
   );
 }
 
 export function StickyBar({ children }) {
   return (
-    <div className="fixed left-0 right-0 bottom-[60px] lg:bottom-0 lg:left-64 z-30 bg-surface/95 backdrop-blur-md border-t border-slate-200 px-4 py-3">
+    <div className="fixed left-0 right-0 bottom-[calc(60px+env(safe-area-inset-bottom))] lg:bottom-0 lg:left-64 z-30 bg-surface/95 backdrop-blur-md border-t border-slate-200 px-4 py-3">
       <div className="max-w-2xl mx-auto flex gap-3">{children}</div>
     </div>
   );
@@ -156,27 +156,27 @@ const MAX_PAISE = 10000000000; // 100 crore rupees: bigger values lose float pre
 const MAX_QTY = 1000000;
 
 /** value = integer paise. Shows rupees text, calls onChange(paise). */
-export function MoneyInput({ value, onChange, placeholder = '0', ...rest }) {
+export function MoneyInput({ value, onChange, placeholder = '0', className = '', ...rest }) {
   const [text, setText] = useState(value ? fromPaise(value).replace(/\.00$/, '') : '');
   useEffect(() => {
     if (toPaise(text) !== (value || 0)) setText(value ? fromPaise(value).replace(/\.00$/, '') : '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
   return (
-    <input className="input num" inputMode="decimal" placeholder={placeholder} value={text} {...rest}
+    <input {...rest} className={`input num ${className}`} inputMode="decimal" placeholder={placeholder} value={text}
       onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, ''); const p = toPaise(v); if (p > MAX_PAISE) return; setText(v); onChange(p); }} />
   );
 }
 
 /** Integer/decimal quantity. value = number */
-export function QtyInput({ value, onChange, integer = true, ...rest }) {
+export function QtyInput({ value, onChange, integer = true, className = '', ...rest }) {
   const [text, setText] = useState(value ? String(value) : '');
   useEffect(() => {
     if ((Number(text) || 0) !== (value || 0)) setText(value ? String(value) : '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
   return (
-    <input className="input num" inputMode={integer ? 'numeric' : 'decimal'} placeholder="0" value={text} {...rest}
+    <input {...rest} className={`input num ${className}`} inputMode={integer ? 'numeric' : 'decimal'} placeholder="0" value={text}
       onChange={(e) => {
         const v = e.target.value.replace(integer ? /[^0-9]/g : /[^0-9.]/g, '');
         if ((Number(v) || 0) > MAX_QTY) return;

@@ -63,6 +63,9 @@ h1, h2, h3, p, li, .label { overflow-wrap: anywhere; }
   .skeleton::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgb(var(--surface) / .6), transparent); animation: shimmer 1.4s infinite; }
 }
 button, a, [role='button'], [role='tab'], label { touch-action: manipulation; }
+/* iOS Safari: native date/number inputs ignore width and radius unless appearance is reset */
+input.input[type='date'], input.input[type='time'], input.input[type='month'] { -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 0; max-width: 100%; text-align: left; }
+input.input[type='date']::-webkit-date-and-time-value { text-align: left; min-height: 1.5em; }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 
 @media (prefers-reduced-motion: reduce) {

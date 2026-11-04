@@ -28,18 +28,9 @@ export default defineConfig({
         navigateFallback: '/index.html',
         globPatterns: ['**/*.{js,css,html,png,svg,ico,woff2}'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-        // Map tiles: keep them on the phone so the map is fast and the free OpenStreetMap servers see fewer requests
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/(?:[abc]\.)?tile\.openstreetmap\.org\/.*/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'osm-tiles',
-              expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 30 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-        ],
+        // Map tiles are NOT cached by the service worker on purpose: the worker's own fetch is governed by connect-src of the
+        // Content-Security-Policy, so intercepting tiles there blocked them on installed phones. The browser's normal HTTP cache
+        // (OpenStreetMap sends cache headers) is enough, and the page's img-src already allows the tile hosts.
       },
     }),
   ],

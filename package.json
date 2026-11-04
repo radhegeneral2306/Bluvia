@@ -11,6 +11,9 @@
     "test:emulator": "firebase emulators:exec --only firestore --project demo-bluvia \"vitest run -c vitest.emulator.config.js\""
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@phosphor-icons/react": "^2.1.10",
     "firebase": "^10.14.1",
     "jspdf": "^4.2.1",
     "react": "^19.3.1",

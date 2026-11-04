@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Plus, ShareNetwork, Trash, Receipt, FunnelSimple } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 import { listTxns, softDeleteTxn } from '../data/api.js';
 import { Page, Tabs, Spinner, Empty, useToast } from '../components/ui.jsx';
@@ -35,21 +36,21 @@ export default function Bills() {
   const rows = items.map((t) => ({ t, d: describeTxn(t, { jarName, money }) }));
   const actions = (row) => (
     <>
-      {row.t.type === 'bill' && <button className="btn btn-sm" onClick={() => setShare(row.t)}>📤 Share</button>}
+      {row.t.type === 'bill' && <button className="btn btn-sm" onClick={() => setShare(row.t)}><ShareNetwork size={18} />Share</button>}
       <EditLink t={row.t} />
-      <button className="btn btn-sm !text-red-600" onClick={() => del(row.t)}>🗑</button>
+      <button className="btn btn-sm !text-red-600" aria-label="Delete" onClick={() => del(row.t)}><Trash size={18} /></button>
     </>
   );
 
   return (
-    <Page title="Bills & Receipts" actions={<Link to="/bill/new" className="btn btn-primary btn-sm">+ Bill</Link>}>
+    <Page title="Bills & Receipts" actions={<Link to="/bill/new" className="btn btn-primary btn-sm"><Plus size={18} weight="bold" />Bill</Link>}>
       <Tabs tabs={[['bill', 'Bills'], ['receipt', 'Receipts']]} value={type} onChange={setType} />
-      <div className="grid grid-cols-2 gap-2">
-        <label><span className="label">From</span><input type="date" className="input" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-        <label><span className="label">To</span><input type="date" className="input" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+      <div className="grid grid-cols-2 gap-3">
+        <label><span className="label">From</span><input type="date" className="input num" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+        <label><span className="label">To</span><input type="date" className="input num" value={to} onChange={(e) => setTo(e.target.value)} /></label>
       </div>
-      {(from || to) && <button className="btn btn-sm" onClick={() => { setFrom(''); setTo(''); }}>Filter hatao</button>}
-      {loading && !items.length ? <Spinner /> : !rows.length ? <Empty>Kuch nahi mila</Empty> : (
+      {(from || to) && <button className="btn btn-sm" onClick={() => { setFrom(''); setTo(''); }}><FunnelSimple size={18} />Filter hatao</button>}
+      {loading && !items.length ? <Spinner /> : !rows.length ? <Empty icon={Receipt} title={type === 'bill' ? 'Koi bill nahi' : 'Koi receipt nahi'} action={type === 'bill' ? <Link to="/bill/new" className="btn btn-primary btn-sm mt-2"><Plus size={18} weight="bold" />Naya bill</Link> : null}>Filter badal kar dekho ya nayi entry banao.</Empty> : (
         <div className="space-y-2">{rows.map((r) => <TxnRow key={r.t.id} row={r} money={money} showParty actions={actions} />)}</div>
       )}
       {hasMore && <button className="btn w-full" disabled={loading} onClick={() => load(true, cursor)}>{loading ? 'Loading…' : 'Load more'}</button>}

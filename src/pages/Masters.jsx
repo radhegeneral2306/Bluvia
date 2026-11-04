@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Plus, PencilSimple, Power, Jar, Package } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 import { saveMaster } from '../data/api.js';
 import { Page, Tabs, Modal, Field, MoneyInput, Badge, Empty, useToast } from '../components/ui.jsx';
@@ -30,33 +31,39 @@ export default function Masters() {
 
   return (
     <Page title="Jar Types & Items" back="/more"
-      actions={<button className="btn btn-primary btn-sm" onClick={() => setEdit({ id: null, data: tab === 'jar' ? blankJar : blankItem })}>+ Add</button>}>
+      actions={<button className="btn btn-primary btn-sm" onClick={() => setEdit({ id: null, data: tab === 'jar' ? blankJar : blankItem })}><Plus size={18} weight="bold" />Add</button>}>
       <Tabs tabs={[['jar', 'Jar Types'], ['item', 'Items']]} value={tab} onChange={setTab} />
-      {!rows.length && <Empty>Abhi kuch nahi hai. "+ Add" dabao.</Empty>}
-      <div className="space-y-2">
-        {rows.map((r) => (
-          <div key={r.id} className={`card p-3 flex items-center gap-3 ${r.active === false ? 'opacity-60' : ''}`}>
-            <button className="flex-1 text-left" onClick={() => setEdit({ id: r.id, data: { ...r, jarTypeId: r.jarTypeId || '' } })}>
-              <div className="font-semibold">{r.name} {r.active === false && <Badge tone="amber">Inactive</Badge>}</div>
-              <div className="text-sm text-slate-500">
-                Rate {money(r.defaultRate || 0)}
-                {tab === 'jar' ? ` • Deposit ${money(r.defaultDeposit || 0)}${r.shortCode ? ` • Code ${r.shortCode}` : ''}` : ` • ${r.unit || ''}${r.jarTypeId ? ` • Jar: ${jarMap[r.jarTypeId]?.name || '?'}` : ''}`}
+      {!rows.length && <Empty icon={tab === 'jar' ? Jar : Package} title="Abhi kuch nahi hai">Upar Add dabakar pehli entry banao.</Empty>}
+      {!!rows.length && (
+        <div className="card divide-y divide-slate-100 overflow-hidden">
+          {rows.map((r) => {
+            const inactive = r.active === false;
+            const meta = tab === 'jar'
+              ? [`Rate ${money(r.defaultRate || 0)}`, `Deposit ${money(r.defaultDeposit || 0)}`, r.shortCode ? `Code ${r.shortCode}` : null]
+              : [`Rate ${money(r.defaultRate || 0)}`, r.unit || null, r.jarTypeId ? `Jar: ${jarMap[r.jarTypeId]?.name || '?'}` : null];
+            return (
+              <div key={r.id} className="flex items-center gap-2 pl-4 pr-2 min-h-[68px] py-2">
+                <button className={`flex-1 min-w-0 text-left ${inactive ? 'opacity-60' : ''}`} onClick={() => setEdit({ id: r.id, data: { ...r, jarTypeId: r.jarTypeId || '' } })}>
+                  <div className="font-semibold truncate">{r.name} {inactive && <Badge tone="amber">Inactive</Badge>}</div>
+                  <div className="text-sm text-slate-500 num">{meta.filter(Boolean).join(', ')}</div>
+                </button>
+                <button className="btn btn-ghost !w-11 !px-0 rounded-full text-slate-500" aria-label={`${r.name} edit karo`} onClick={() => setEdit({ id: r.id, data: { ...r, jarTypeId: r.jarTypeId || '' } })}><PencilSimple size={20} /></button>
+                <button className={`btn btn-sm ${inactive ? 'text-emerald-700' : 'text-slate-600'}`} onClick={() => toggle(tab === 'jar' ? 'jarTypes' : 'items', r)}>
+                  <Power size={18} />{inactive ? 'Activate' : 'Deactivate'}
+                </button>
               </div>
-            </button>
-            <button className="btn btn-sm" onClick={() => toggle(tab === 'jar' ? 'jarTypes' : 'items', r)}>
-              {r.active === false ? 'Activate' : 'Deactivate'}
-            </button>
-          </div>
-        ))}
-      </div>
-      <p className="text-xs text-slate-500">Delete nahi hota — purani bills/ledger safe rehne ke liye sirf Deactivate hota hai.</p>
+            );
+          })}
+        </div>
+      )}
+      <p className="text-xs text-slate-500">Delete nahi hota, purani bills/ledger safe rehne ke liye sirf Deactivate hota hai.</p>
 
       <Modal open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Edit' : 'Add'}>
         {edit && (
           <div className="space-y-3">
             <Field label="Name"><input className="input" value={edit.data.name} onChange={(e) => set('name', e.target.value)} /></Field>
             {tab === 'jar' && (
-              <Field label="PDF short code (1–2 letters)" hint="Invoice table mein columns ke liye, jaise N → ND / NR (Normal Delivered / Returned), C → CD / CR.">
+              <Field label="PDF short code (1-2 letters)" hint="Invoice table mein columns ke liye, jaise N = ND / NR (Normal Delivered / Returned), C = CD / CR.">
                 <input className="input" maxLength={3} value={edit.data.shortCode || ''} onChange={(e) => set('shortCode', e.target.value.toUpperCase())} />
               </Field>
             )}
@@ -65,7 +72,7 @@ export default function Masters() {
                 <Field label="Unit (jar, pcs, box…)"><input className="input" value={edit.data.unit || ''} onChange={(e) => set('unit', e.target.value)} /></Field>
                 <Field label="Is item ka jar type (agar jar wala item hai)">
                   <select className="input" value={edit.data.jarTypeId || ''} onChange={(e) => set('jarTypeId', e.target.value)}>
-                    <option value="">— Not a jar item —</option>
+                    <option value="">Not a jar item</option>
                     {jarTypes.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
                   </select>
                 </Field>
@@ -80,7 +87,7 @@ export default function Masters() {
               </Field>
             )}
             <label className="flex items-center gap-3 min-h-[44px]">
-              <input type="checkbox" className="w-5 h-5" checked={edit.data.active !== false} onChange={(e) => set('active', e.target.checked)} /> Active
+              <input type="checkbox" className="w-5 h-5 accent-brand-600" checked={edit.data.active !== false} onChange={(e) => set('active', e.target.checked)} /> Active
             </label>
             <button className="btn btn-primary w-full" onClick={save}>Save</button>
           </div>

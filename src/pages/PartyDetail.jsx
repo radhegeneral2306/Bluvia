@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../data/store.jsx';
 import { listTxns, softDeleteTxn } from '../data/api.js';
-import { Page, Tabs, Spinner, Empty, Modal, useToast } from '../components/ui.jsx';
+import { Receipt, HandCoins, ArrowUUpLeft, Bank, ShareNetwork, Phone, WhatsappLogo, Trash, ListBullets, FilePdf } from '@phosphor-icons/react';
+import { Page, Tabs, Spinner, Empty, Modal, Avatar, useToast } from '../components/ui.jsx';
 import TxnRow, { EditLink } from '../components/TxnRow.jsx';
 import ShareBillModal from '../components/ShareBillModal.jsx';
 import { describeTxn } from '../lib/describe.js';
@@ -57,9 +58,9 @@ export default function PartyDetail() {
 
   const actions = (row) => (
     <>
-      {row.t.type === 'bill' && <button className="btn btn-sm" onClick={() => setShareBill(row.t)}>📤 Share</button>}
+      {row.t.type === 'bill' && <button className="btn btn-sm" onClick={() => setShareBill(row.t)}><ShareNetwork size={18} />Share</button>}
       <EditLink t={row.t} />
-      <button className="btn btn-sm !text-red-600" onClick={() => del(row.t)}>🗑 Delete</button>
+      <button className="btn btn-sm !text-red-600" onClick={() => del(row.t)}><Trash size={18} />Delete</button>
     </>
   );
 
@@ -80,47 +81,52 @@ export default function PartyDetail() {
   return (
     <Page title={party.name} back="/parties" actions={<Link to={`/party/${id}/edit`} className="btn btn-sm">Edit</Link>}>
       <div className="card p-4">
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div><div className="text-xs text-slate-500">Baaki</div><div className={`font-bold text-lg ${(party.outstanding || 0) > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{money(party.outstanding || 0)}</div></div>
-          <div><div className="text-xs text-slate-500">Jars</div><div className="font-bold text-lg">{totalJars}</div></div>
-          <div><div className="text-xs text-slate-500">Deposit</div><div className="font-bold text-lg">{money(party.depositBalance || 0)}</div></div>
+        <div className="flex items-center gap-3 mb-4">
+          <Avatar name={party.name} className="!w-12 !h-12 !text-base" />
+          <div className="min-w-0">
+            <div className="text-sm text-slate-600 truncate">{party.phone || 'No phone'}</div>
+            {party.address && <div className="text-xs text-slate-500 truncate">{party.address}</div>}
+          </div>
         </div>
-        {totalJars !== 0 && <div className="text-xs text-slate-500 text-center mt-2">{jarTypes.filter((j) => jarBal[j.id]).map((j) => `${jarBal[j.id]} × ${j.name}`).join(' • ')}</div>}
-        <div className="text-xs text-slate-500 text-center mt-1">{party.phone}{party.address ? ` • ${party.address}` : ''}</div>
+        <div className="grid grid-cols-[1.4fr_1fr_1.2fr] gap-3">
+          <div><div className="text-[13px] text-slate-500">Baaki</div><div className={`font-semibold text-2xl num ${(party.outstanding || 0) > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{money(party.outstanding || 0)}</div></div>
+          <div><div className="text-[13px] text-slate-500">Jars</div><div className="font-semibold text-2xl num">{totalJars}</div></div>
+          <div><div className="text-[13px] text-slate-500">Deposit</div><div className="font-semibold text-2xl num">{money(party.depositBalance || 0)}</div></div>
+        </div>
+        {totalJars !== 0 && <div className="text-xs text-slate-500 mt-3">{jarTypes.filter((j) => jarBal[j.id]).map((j) => `${jarBal[j.id]} × ${j.name}`).join(', ')}</div>}
       </div>
 
       <div className="grid grid-cols-4 gap-2">
-        <Link to={q('/bill/new')} className="btn btn-primary !px-1 text-xs">🧾 Bill</Link>
-        <Link to={q('/entry/new/receipt')} className="btn !px-1 text-xs">💵 Receipt</Link>
-        <Link to={q('/entry/new/jar')} className="btn !px-1 text-xs">🫙 Jar</Link>
-        <Link to={q('/entry/new/deposit')} className="btn !px-1 text-xs">🏦 Deposit</Link>
+        {[[q('/bill/new'), Receipt, 'Bill', true], [q('/entry/new/receipt'), HandCoins, 'Receipt'], [q('/entry/new/jar'), ArrowUUpLeft, 'Jar'], [q('/entry/new/deposit'), Bank, 'Deposit']].map(([to, Icon, label, primary]) => (
+          <Link key={label} to={to} className={`btn flex-col !gap-1 !py-2 !px-1 min-h-[64px] text-xs ${primary ? 'btn-primary' : ''}`}><Icon size={22} />{label}</Link>
+        ))}
       </div>
       <div className="grid grid-cols-3 gap-2">
-        <button className="btn btn-sm" onClick={() => setStmtOpen(true)}>📤 Statement</button>
-        <a className={`btn btn-sm ${party.phone ? '' : 'opacity-50 pointer-events-none'}`} href={`tel:${party.phone}`}>📞 Call</a>
-        <a className={`btn btn-sm ${party.phone ? '' : 'opacity-50 pointer-events-none'}`} target="_blank" rel="noreferrer" href={waLink(party.phone, '', settings.countryCode)}>💬 WhatsApp</a>
+        <button className="btn btn-sm" onClick={() => setStmtOpen(true)}><ShareNetwork size={18} />Statement</button>
+        <a className={`btn btn-sm ${party.phone ? '' : 'opacity-50 pointer-events-none'}`} href={`tel:${party.phone}`}><Phone size={18} />Call</a>
+        <a className={`btn btn-sm ${party.phone ? '' : 'opacity-50 pointer-events-none'}`} target="_blank" rel="noreferrer" href={waLink(party.phone, '', settings.countryCode)}><WhatsappLogo size={18} />WhatsApp</a>
       </div>
 
       <Tabs tabs={[['ledger', 'Ledger'], ['jars', 'Jars'], ['deposit', 'Deposit']]} value={tab} onChange={setTab} />
       {tab === 'jars' && (
         <div className="card p-3 text-sm space-y-1">
-          {jarTypes.map((j) => <div key={j.id} className="flex justify-between"><span>{j.name}</span><b className={(jarBal[j.id] || 0) < 0 ? 'text-red-600' : ''}>{jarBal[j.id] || 0}</b></div>)}
+          {jarTypes.map((j) => <div key={j.id} className="flex justify-between"><span>{j.name}</span><b className={`num ${(jarBal[j.id] || 0) < 0 ? 'text-red-600' : ''}`}>{jarBal[j.id] || 0}</b></div>)}
         </div>
       )}
-      {tab === 'deposit' && <div className="card p-3 text-sm flex justify-between"><span>Deposit abhi hamare paas</span><b>{money(party.depositBalance || 0)}</b></div>}
+      {tab === 'deposit' && <div className="card p-3 text-sm flex justify-between"><span>Deposit abhi hamare paas</span><b className="num">{money(party.depositBalance || 0)}</b></div>}
 
-      {loading && !entries.length ? <Spinner /> : !shown.length ? <Empty>{tab === 'ledger' ? 'Abhi koi entry nahi' : 'Loaded entries mein kuch nahi mila (Load more try karo)'}</Empty> : (
+      {loading && !entries.length ? <Spinner /> : !shown.length ? <Empty icon={ListBullets} title={tab === 'ledger' ? 'Abhi koi entry nahi' : 'Kuch nahi mila'}>{tab === 'ledger' ? 'Bill ya receipt banao, yahan dikhega.' : 'Loaded entries mein kuch nahi mila. Load more try karo.'}</Empty> : (
         <div className="space-y-2">{shown.map((r) => <TxnRow key={r.t.id} row={r} money={money} actions={actions} />)}</div>
       )}
       {hasMore && <button className="btn w-full" disabled={loading} onClick={() => load(true)}>{loading ? 'Loading…' : 'Load more'}</button>}
-      <div className="text-center"><Link className="text-xs text-slate-500 underline" to={q('/entry/new/adjustment')}>Manual adjustment entry</Link></div>
+      <div className="text-center"><Link className="btn btn-ghost btn-sm text-slate-500 underline" to={q('/entry/new/adjustment')}>Manual adjustment entry</Link></div>
 
       <ShareBillModal bill={shareBill} onClose={() => setShareBill(null)} />
       <Modal open={stmtOpen} onClose={() => setStmtOpen(false)} title="Statement share">
         <div className="space-y-3">
           <p className="text-xs text-slate-500">Statement mein wahi entries aayengi jo screen par loaded hain ({rows.length}). Zyada ke liye pehle "Load more" dabao.</p>
-          <button className="btn btn-primary w-full" onClick={stmtPdf}>📄 PDF share / download</button>
-          <a className={`btn w-full ${party.phone ? '' : 'opacity-50 pointer-events-none'}`} target="_blank" rel="noreferrer" href={waLink(party.phone, stmt, settings.countryCode)}>💬 WhatsApp text</a>
+          <button className="btn btn-primary w-full" onClick={stmtPdf}><FilePdf size={20} />PDF share / download</button>
+          <a className={`btn w-full ${party.phone ? '' : 'opacity-50 pointer-events-none'}`} target="_blank" rel="noreferrer" href={waLink(party.phone, stmt, settings.countryCode)}><WhatsappLogo size={20} />WhatsApp text</a>
           <button className="btn w-full" onClick={async () => { const r = await shareText(stmt, 'Statement'); if (r === 'copied') toast('Text copy ho gaya'); }}>Text share / copy</button>
         </div>
       </Modal>

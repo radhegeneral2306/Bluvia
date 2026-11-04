@@ -52,27 +52,27 @@ export default function PartyForm() {
         <Field label="Phone"><input className="input" inputMode="tel" value={f.phone} onChange={(e) => set('phone', e.target.value)} /></Field>
         <Field label="Address"><textarea className="input !py-2" rows={2} value={f.address} onChange={(e) => set('address', e.target.value)} /></Field>
         <Field label="Notes"><input className="input" value={f.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
-        <label className="flex items-center gap-3 min-h-[44px]"><input type="checkbox" className="w-5 h-5" checked={f.active !== false} onChange={(e) => set('active', e.target.checked)} /> Active</label>
+        <label className="flex items-center gap-3 min-h-[48px] font-medium"><input type="checkbox" className="w-5 h-5" checked={f.active !== false} onChange={(e) => set('active', e.target.checked)} /> Active</label>
       </div>
 
       <div className="card p-4 space-y-3">
-        <h2 className="font-bold">Opening balance</h2>
+        <h2 className="font-semibold">Opening balance</h2>
         <p className="text-xs text-slate-500">Purana hisaab jo is app mein aane se pehle ka hai. Baad mein badloge to sirf difference balance mein judega.</p>
         <Field label={`Baaki paisa (${money(0).replace('0', '')})`}><MoneyInput value={f.openingBalance} onChange={(v) => set('openingBalance', v)} /></Field>
         <Field label="Deposit jo hamare paas hai"><MoneyInput value={f.openingDeposit} onChange={(v) => set('openingDeposit', v)} /></Field>
         {activeJars.map((j) => (
-          <Field key={j.id} label={`Jars out — ${j.name}`}>
+          <Field key={j.id} label={`Jars out: ${j.name}`}>
             <QtyInput value={(f.openingJars || {})[j.id] || 0} onChange={(n) => set('openingJars', { ...f.openingJars, [j.id]: n })} />
           </Field>
         ))}
       </div>
 
       <div className="card p-4 space-y-3">
-        <h2 className="font-bold">Party ke special rates (optional)</h2>
+        <h2 className="font-semibold">Party ke special rates (optional)</h2>
         <p className="text-xs text-slate-500">Khali chhodo to default rate / deposit lagega.</p>
         {activeJars.map((j) => (
-          <div key={j.id} className="rounded-xl border border-slate-200 p-3 space-y-2">
-            <div className="font-semibold text-sm">{j.name} <span className="text-slate-400 font-normal">(default {money(j.defaultRate || 0)} / dep {money(j.defaultDeposit || 0)})</span></div>
+          <div key={j.id} className="rounded-xl bg-slate-50 p-3 space-y-2">
+            <div className="font-semibold text-sm">{j.name} <span className="text-slate-500 font-normal">(default {money(j.defaultRate || 0)}, dep {money(j.defaultDeposit || 0)})</span></div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Rate"><MoneyInput value={f.jarRates[j.id]?.rate || 0} onChange={(v) => setJar(j.id, 'rate', v)} /></Field>
               <Field label="Deposit"><MoneyInput value={f.jarRates[j.id]?.deposit || 0} onChange={(v) => setJar(j.id, 'deposit', v)} /></Field>

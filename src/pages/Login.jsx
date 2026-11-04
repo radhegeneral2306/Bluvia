@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { signInWithEmailAndPassword, setPersistence, browserLocalPersistence } from 'firebase/auth';
+import { WarningCircle } from '@phosphor-icons/react';
 import { auth } from '../lib/firebase.js';
 
 export default function Login() {
@@ -25,17 +26,24 @@ export default function Login() {
     } finally { setBusy(false); }
   }
   return (
-    <div className="min-h-full flex items-center justify-center p-6">
-      <form onSubmit={submit} className="card w-full max-w-sm p-6 space-y-4">
-        <div className="text-center">
-          <img src="/logo.jpg" alt="Bluvia Pure Drinking Water" className="w-56 max-w-full mx-auto rounded-lg" />
-          <p className="text-sm text-slate-500">Login karo</p>
+    <div className="min-h-[100dvh] flex items-center justify-center p-6">
+      <form onSubmit={submit} className="w-full max-w-sm space-y-5 page-enter">
+        <div className="space-y-4">
+          <img src="/logo.jpg" alt="Bluvia Pure Drinking Water" className="w-56 max-w-full rounded-xl" />
+          <div>
+            <h1 className="text-2xl font-semibold">Login karo</h1>
+            <p className="text-sm text-slate-500 mt-1">Apne email aur password se andar aao.</p>
+          </div>
         </div>
-        <div><span className="label">Email</span>
-          <input className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
-        <div><span className="label">Password</span>
-          <input className="input" type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} required /></div>
-        {err && <p className="text-sm text-red-600">{err}</p>}
+        <label className="block"><span className="label">Email</span>
+          <input className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+        <label className="block"><span className="label">Password</span>
+          <input className="input" type="password" autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} required /></label>
+        {err && (
+          <p className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5" role="alert">
+            <WarningCircle size={20} weight="fill" className="shrink-0 mt-px" />{err}
+          </p>
+        )}
         <button className="btn btn-primary w-full" disabled={busy}>{busy ? 'Wait…' : 'Login'}</button>
       </form>
     </div>

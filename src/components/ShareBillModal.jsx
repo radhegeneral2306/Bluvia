@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../data/store.jsx';
-import { Modal, useToast } from './ui.jsx';
+import { FilePdf, WhatsappLogo, Check } from '@phosphor-icons/react';
+import { Modal, Tabs, useToast } from './ui.jsx';
 import { buildBillPdf } from '../lib/pdf.js';
 import { sharePdf, billText, waLink } from '../lib/share.js';
 
@@ -25,16 +26,14 @@ export default function ShareBillModal({ bill, onClose }) {
   return (
     <Modal open onClose={onClose} title={`Bill ${bill.billNo || ''} share karo`}>
       <div className="space-y-3">
-        <div className="flex gap-2">
-          {[['invoice', 'Invoice (full page)'], ['thermal', 'Thermal (narrow)']].map(([k, l]) => (
-            <button key={k} onClick={() => pick(k)} className={`btn btn-sm flex-1 ${layout === k ? 'btn-primary' : ''}`}>{l}</button>
-          ))}
-        </div>
-        <button className="btn btn-primary w-full" disabled={busy} onClick={pdf}>{busy ? 'Ban raha hai…' : '📄 PDF share / download'}</button>
+        <Tabs tabs={[['invoice', 'Invoice (full page)'], ['thermal', 'Thermal (narrow)']]} value={layout} onChange={pick} />
+        <button className="btn btn-primary w-full" disabled={busy} onClick={pdf}>
+          <FilePdf size={20} />{busy ? 'Ban raha hai…' : 'PDF share / download'}
+        </button>
         <a className={`btn w-full ${party?.phone ? '' : 'opacity-50 pointer-events-none'}`} target="_blank" rel="noreferrer"
-          href={waLink(party?.phone, text, settings.countryCode)}>💬 WhatsApp text bhejo</a>
-        {!party?.phone && <p className="text-xs text-amber-700">Party ka phone number nahi hai — party edit karke daalo.</p>}
-        <button className="btn w-full" onClick={onClose}>Done</button>
+          href={waLink(party?.phone, text, settings.countryCode)}><WhatsappLogo size={20} />WhatsApp text bhejo</a>
+        {!party?.phone && <p className="text-xs text-amber-700">Party ka phone number nahi hai. Party edit karke daalo.</p>}
+        <button className="btn btn-ghost w-full" onClick={onClose}><Check size={20} weight="bold" />Done</button>
       </div>
     </Modal>
   );

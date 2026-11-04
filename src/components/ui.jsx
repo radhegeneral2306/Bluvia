@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Warning, WarningCircle, X, Tray } from '@phosphor-icons/react';
 import { fromPaise, toPaise } from '../lib/money.js';
@@ -113,7 +114,9 @@ export function Modal({ open, onClose, title, children }) {
     const opener = document.activeElement;
     const el = panel.current;
     const items = () => Array.from(el.querySelectorAll(FOCUSABLE)).filter((n) => n.offsetParent !== null);
-    (el.querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled])') || items()[0] || el).focus({ preventScroll: true });
+    // On phones do NOT auto-focus a text box: it opens the keyboard, which on iOS shifts the sheet and can swallow taps.
+    const coarse = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    (coarse ? el : (el.querySelector('input:not([disabled]),select:not([disabled]),textarea:not([disabled])') || items()[0] || el)).focus({ preventScroll: true });
     const onKey = (e) => {
       if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); return; }
       if (e.key !== 'Tab') return;
@@ -131,10 +134,11 @@ export function Modal({ open, onClose, title, children }) {
     };
   }, [open]);
   if (!open) return null;
-  return (
+  // Rendered into <body> so no animated/transformed page ancestor can trap it under the bottom nav or break taps (iOS Safari).
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/50" onClick={onClose}>
       <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
-        className="animate-sheet bg-surface w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 pb-6 max-h-[88vh] overflow-y-auto focus:outline-none" onClick={(e) => e.stopPropagation()}>
+        className="animate-sheet bg-surface w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl p-4 pb-6 max-h-[85dvh] overflow-y-auto overscroll-contain focus:outline-none" onClick={(e) => e.stopPropagation()}>
         <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mb-3 sm:hidden" />
         <div className="flex items-center mb-3">
           <h2 id={titleId} className="font-semibold text-lg flex-1">{title}</h2>
@@ -142,7 +146,8 @@ export function Modal({ open, onClose, title, children }) {
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

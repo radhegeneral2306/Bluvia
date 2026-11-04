@@ -23,7 +23,7 @@ export default function PartyPicker({ value, onChange, disabled }) {
         </span>
       </button>
       <Modal open={open} onClose={() => setOpen(false)} title="Party chuno">
-        <input className="input mb-3" autoFocus placeholder="Naam ya phone se search" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input mb-3" placeholder="Naam ya phone se search" value={q} onChange={(e) => setQ(e.target.value)} />
         <div className="space-y-1">
           {list.map((p) => (
             <button key={p.id} className="w-full text-left rounded-xl px-3 py-2.5 min-h-[56px] active:bg-slate-100 border border-slate-100 flex items-center gap-3"

@@ -8,6 +8,7 @@ import { Receipt, HandCoins, ArrowUUpLeft, Bank, ShareNetwork, Phone, WhatsappLo
 import { Page, Tabs, Spinner, Empty, Modal, Avatar, useToast } from '../components/ui.jsx';
 import TxnRow, { EditLink } from '../components/TxnRow.jsx';
 import ShareBillModal from '../components/ShareBillModal.jsx';
+import LocationCard from '../components/LocationCard.jsx';
 import { describeTxn } from '../lib/describe.js';
 import { findLastBill } from '../lib/repeatBill.js';
 import { buildStatementPdf } from '../lib/pdf.js';
@@ -125,6 +126,8 @@ export default function PartyDetail() {
         </div>
         {totalJars !== 0 && <div className="text-xs text-slate-500 mt-3">{jarTypes.filter((j) => jarBal[j.id]).map((j) => `${jarBal[j.id]} × ${j.name}`).join(', ')}</div>}
       </div>
+
+      <LocationCard party={party} />
 
       <div className="grid grid-cols-2 min-[340px]:grid-cols-4 gap-2">
         {[[q('/bill/new'), Receipt, 'Bill', true], [q('/entry/new/receipt'), HandCoins, 'Receipt'], [q('/entry/new/jar'), ArrowUUpLeft, 'Jar'], [q('/entry/new/deposit'), Bank, 'Deposit']].map(([to, Icon, label, primary]) => (

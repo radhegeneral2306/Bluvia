@@ -293,6 +293,7 @@ describe('Code.gs against the Firestore emulator', () => {
     expect(row['Opening balance (Rs)']).toBe(1000);
     expect(row['Party ID']).toBe(partyId);
     expect(row['Jars with party']).toContain('20L Jar');
+    expect([row.Latitude, row.Longitude, row['Location accuracy (m)'], row['Maps link']]).toEqual(['', '', '', '']); // no location yet
 
     const daily = objects(S.spreadsheet.getSheetByName('Daily'));
     const stats = (await getDocs(collection(db, 'stats'))).docs.filter((d) => d.id.startsWith('daily_'));
@@ -315,6 +316,15 @@ describe('Code.gs against the Firestore emulator', () => {
     expect(status['Total deposit held (Rs)']).toBe(summary.totalDepositHeld / 100);
     expect(status['Last result']).toBe('OK'); // refreshParties must keep the sync status rows
     expect(status['Parties refreshed']).toBeTruthy();
+  });
+
+  it('5b. a party with a location (real Firestore data) shows Latitude, Longitude, accuracy and the Maps link', async () => {
+    await api.saveLocation(partyId, { lat: 21.251432, lng: 81.629611, accuracy: 18.4, source: 'gps' });
+    S.ctx.refreshParties();
+    const row = objects(S.spreadsheet.getSheetByName('Parties'))[0];
+    expect(row.Latitude).toBe(21.251432); expect(row.Longitude).toBe(81.629611); expect(row['Location accuracy (m)']).toBe(18);
+    expect(row['Maps link']).toBe('=HYPERLINK("https://www.google.com/maps/search/?api=1&query=21.251432,81.629611","Open in Maps")');
+    expect(row['Party ID']).toBe(partyId);
   });
 
   it('6. log row count equals the number of distinct (txnId, updatedAt) versions', async () => {

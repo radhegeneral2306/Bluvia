@@ -83,8 +83,8 @@ export default function Settings() {
         <div className="card p-4 space-y-3">
           <div className="flex flex-wrap gap-2">
             {f.paymentModes.map((m) => (
-              <span key={m} className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-800 text-sm font-medium pl-3 pr-1 min-h-[36px]">{m}
-                <button className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 active:bg-slate-200" aria-label={`${m} hatao`}
+              <span key={m} className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-800 text-sm font-medium pl-3 pr-1 min-h-[44px]">{m}
+                <button className="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 active:bg-slate-200" aria-label={`${m} hatao`}
                   onClick={() => setF({ ...f, paymentModes: f.paymentModes.filter((x) => x !== m) })}><X size={16} weight="bold" /></button></span>
             ))}
           </div>

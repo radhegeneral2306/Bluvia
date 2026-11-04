@@ -119,7 +119,7 @@ export default function PartyDetail() {
         <div className="space-y-2">{shown.map((r) => <TxnRow key={r.t.id} row={r} money={money} actions={actions} />)}</div>
       )}
       {hasMore && <button className="btn w-full" disabled={loading} onClick={() => load(true)}>{loading ? 'Loading…' : 'Load more'}</button>}
-      <div className="text-center"><Link className="text-xs text-slate-500 underline" to={q('/entry/new/adjustment')}>Manual adjustment entry</Link></div>
+      <div className="text-center"><Link className="btn btn-ghost btn-sm text-slate-500 underline" to={q('/entry/new/adjustment')}>Manual adjustment entry</Link></div>
 
       <ShareBillModal bill={shareBill} onClose={() => setShareBill(null)} />
       <Modal open={stmtOpen} onClose={() => setStmtOpen(false)} title="Statement share">

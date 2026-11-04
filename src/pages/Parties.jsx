@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, MagnifyingGlass, UsersThree } from '@phosphor-icons/react';
+import { Plus, MagnifyingGlass, UsersThree, MapTrifold } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 import { Page, Empty, Badge, Avatar } from '../components/ui.jsx';
 import { dueView } from '../lib/advance.js';
@@ -21,7 +21,12 @@ export default function Parties() {
   const jarText = (p) => jarTypes.map((j) => [j.name, (p.jarBalance || {})[j.id] || 0]).filter(([, n]) => n).map(([n, c]) => `${c}×${n}`).join(', ');
 
   return (
-    <Page title="Parties" actions={<Link to="/party/new" className="btn btn-primary btn-sm"><Plus size={18} weight="bold" />Add</Link>} narrow={false}>
+    <Page title="Parties" actions={(
+      <div className="flex items-center gap-2">
+        <Link to="/map" aria-label="Map dekho" className="btn btn-sm !min-h-[44px] !w-11 !px-0"><MapTrifold size={20} /></Link>
+        <Link to="/party/new" className="btn btn-primary btn-sm !min-h-[44px]"><Plus size={18} weight="bold" />Add</Link>
+      </div>
+    )} narrow={false}>
       <div className="relative">
         <MagnifyingGlass size={20} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         <input className="input !pl-11" placeholder="Naam, phone ya area se search" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Party search" />

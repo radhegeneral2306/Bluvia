@@ -25,7 +25,11 @@ service cloud.firestore {
         && (!('nextBillNo' in d()) || (d().nextBillNo is int && d().nextBillNo >= 1 && d().nextBillNo < 1000000000000))
         && (!('billNoPad' in d()) || (d().billNoPad is int && d().billNoPad >= 0 && d().billNoPad <= 20))
         && strOrAbsent('businessName') && strOrAbsent('billPrefix') && strOrAbsent('currency')
-        && (!('areas' in d()) || (d().areas is list && d().areas.size() <= 200));
+        && (!('areas' in d()) || (d().areas is list && d().areas.size() <= 200))
+        && (!('upiId' in d()) || (d().upiId is string && d().upiId.size() <= 100))
+        && (!('upiName' in d()) || (d().upiName is string && d().upiName.size() <= 60))
+        && (!('upiRemark' in d()) || (d().upiRemark is string && d().upiRemark.size() <= 60))
+        && (!('upiQrAmount' in d()) || d().upiQrAmount in ['bill', 'due']);
       allow delete: if false;
     }
 

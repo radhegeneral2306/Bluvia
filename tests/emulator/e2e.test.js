@@ -252,6 +252,15 @@ describe('Bluvia against Firestore emulator', () => {
     await setDoc(doc(db, 'parties', partyId), { locAccuracy: null }, { merge: true }); // unknown accuracy is allowed
   });
 
+  it('rules: UPI settings are short strings and the QR mode is bill or due', async () => {
+    await setDoc(doc(db, 'settings', 'main'), { upiId: 'shop@okaxis', upiName: 'Bluvia', upiRemark: 'Bill {billNo}', upiQrAmount: 'due' }, { merge: true });
+    expect((await get('settings', 'main')).upiId).toBe('shop@okaxis');
+    await expect(setDoc(doc(db, 'settings', 'main'), { upiQrAmount: 'everything' }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await expect(setDoc(doc(db, 'settings', 'main'), { upiId: 'x'.repeat(101) }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await expect(setDoc(doc(db, 'settings', 'main'), { upiName: 5 }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await setDoc(doc(db, 'settings', 'main'), { upiQrAmount: 'bill' }, { merge: true });
+  });
+
   it('rules: bad data and signed-out access are rejected', async () => {
     await expect(setDoc(doc(db, 'transactions', 'bad'), { type: 'receipt', partyId, dateKey: '2026-01-01', amount: 'abc' })).rejects.toThrow(/permission|false for/i);
     await expect(setDoc(doc(db, 'secret', 'x'), { a: 1 })).rejects.toThrow(/permission|false for/i);

@@ -67,6 +67,7 @@ export const DEFAULT_SETTINGS = {
   businessName: 'Bluvia Pure Drinking Water', managerName: '', address: '', phone: '', billPrefix: '', billNoPad: 5, nextBillNo: 1,
   invoiceFor: 'Drinking water supply.', showDuesOnPdf: true,
   footerNote: 'THANK YOU FOR YOUR BUSINESS!', paymentModes: ['Cash', 'UPI', 'Bank'], currency: '₹', countryCode: '91', areas: [],
+  upiId: '', upiName: '', upiRemark: 'Bill {billNo}', upiQrAmount: 'bill',
 };
 
 export async function seedDefaults() {

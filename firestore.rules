@@ -24,7 +24,8 @@ service cloud.firestore {
       allow create, update: if isOwner()
         && (!('nextBillNo' in d()) || (d().nextBillNo is int && d().nextBillNo >= 1 && d().nextBillNo < 1000000000000))
         && (!('billNoPad' in d()) || (d().billNoPad is int && d().billNoPad >= 0 && d().billNoPad <= 20))
-        && strOrAbsent('businessName') && strOrAbsent('billPrefix') && strOrAbsent('currency');
+        && strOrAbsent('businessName') && strOrAbsent('billPrefix') && strOrAbsent('currency')
+        && (!('areas' in d()) || (d().areas is list && d().areas.size() <= 200));
       allow delete: if false;
     }
 
@@ -46,6 +47,7 @@ service cloud.firestore {
         && strOrAbsent('name')
         && money('openingBalance') && money('openingDeposit')
         && money('outstanding') && money('depositBalance')
+        && (!('area' in d()) || (d().area is string && d().area.size() <= 60))
         && noteOk();
       allow delete: if false;
     }

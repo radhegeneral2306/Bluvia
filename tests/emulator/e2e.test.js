@@ -231,6 +231,17 @@ describe('Bluvia against Firestore emulator', () => {
     await expect(restoreAll(broken)).rejects.toThrow(/hissa \d+\/\d+ fail hua/);
   });
 
+  it('rules: party area must be a short string; settings areas must be a list', async () => {
+    await setDoc(doc(db, 'parties', partyId), { area: 'Sai Nagar' }, { merge: true });
+    expect((await get('parties', partyId)).area).toBe('Sai Nagar');
+    await expect(setDoc(doc(db, 'parties', partyId), { area: 5 }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await expect(setDoc(doc(db, 'parties', partyId), { area: 'x'.repeat(61) }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await setDoc(doc(db, 'settings', 'main'), { areas: ['Market', 'Sai Nagar'] }, { merge: true });
+    expect((await get('settings', 'main')).areas).toEqual(['Market', 'Sai Nagar']);
+    await expect(setDoc(doc(db, 'settings', 'main'), { areas: 'Market' }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await setDoc(doc(db, 'parties', partyId), { area: '' }, { merge: true }); // no area is allowed
+  });
+
   it('rules: bad data and signed-out access are rejected', async () => {
     await expect(setDoc(doc(db, 'transactions', 'bad'), { type: 'receipt', partyId, dateKey: '2026-01-01', amount: 'abc' })).rejects.toThrow(/permission|false for/i);
     await expect(setDoc(doc(db, 'secret', 'x'), { a: 1 })).rejects.toThrow(/permission|false for/i);

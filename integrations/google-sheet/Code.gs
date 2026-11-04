@@ -24,7 +24,7 @@ var CONFIG = {
 var TABS = { LOG: 'Log', PARTIES: 'Parties', DAILY: 'Daily', STATUS: 'Status' };
 
 var LOG_FIXED = [
-  'Synced at', 'Event', 'Txn ID', 'Updated at', 'Date', 'Type', 'Bill no', 'Party', 'Party ID',
+  'Synced at', 'Event', 'Txn ID', 'Updated at', 'Date', 'Type', 'Bill no', 'Party', 'Party ID', 'Area',
   'Billed (Rs)', 'Received (Rs)', 'Adjustment (Rs)', 'Deposit change (Rs)', 'Discount (Rs)', 'Extra charge (Rs)', 'Mode', 'Reference', 'Note', 'Deleted',
 ];
 
@@ -181,7 +181,7 @@ function jarMovement_(t) {
 }
 
 /** header = full header row (fixed + jar columns); jarTypes = [{id,name}] */
-function buildLogRow_(t, header, jarTypes, syncedAt) {
+function buildLogRow_(t, header, jarTypes, syncedAt, areaMap) {
   var row = new Array(header.length);
   for (var i = 0; i < row.length; i++) row[i] = '';
   var set = function (name, value) { var idx = header.indexOf(name); if (idx >= 0) row[idx] = value; };
@@ -201,6 +201,7 @@ function buildLogRow_(t, header, jarTypes, syncedAt) {
   set('Bill no', t.billNo || '');
   set('Party', t.partyName || '');
   set('Party ID', t.partyId || '');
+  set('Area', (areaMap && areaMap[t.partyId]) || '');
   set('Billed (Rs)', billed);
   set('Received (Rs)', received);
   set('Adjustment (Rs)', adjustment);
@@ -217,6 +218,22 @@ function buildLogRow_(t, header, jarTypes, syncedAt) {
     if (mv.returned[j.id]) set('Returned: ' + j.name, mv.returned[j.id]);
   });
   return row;
+}
+
+/** partyId -> area for the Log. Transactions do not store the area, so it is looked up from the parties collection:
+ *  cached 10 minutes, and the parties list is re-read at most ONCE per run (ctx.read), only when a needed party is not in the cache. */
+function partyAreas_(docs, ctx) {
+  var cache = CacheService.getScriptCache();
+  var map = {};
+  try { map = JSON.parse(cache.get('areas') || '{}'); } catch (e) { map = {}; }
+  var missing = docs.some(function (d) { return d.partyId && !(d.partyId in map); });
+  if (missing && !ctx.read) {
+    ctx.read = true;
+    map = {};
+    listCollection_('parties').forEach(function (p) { map[p.id] = p.area || ''; });
+    try { cache.put('areas', JSON.stringify(map), 600); } catch (e) { /* too large for the cache: fine, it is only a saving */ }
+  }
+  return map;
 }
 
 function jarHeaderNames_(jarTypes) {
@@ -329,12 +346,14 @@ function syncLog() {
       if (lastTs) props.setProperty('cursor', lastTs);
     };
 
+    var areaCtx = { read: false }; // parties are read at most once per run, and only when there is something to write
     var after = null;
     for (;;) {
       var docs = queryTransactions_(since, CONFIG.BATCH, after);
       var fresh = docs.filter(function (d) { return !seen[docKey_(d)]; });
       if (fresh.length) {
-        var rows = fresh.map(function (d) { return buildLogRow_(d, header, jarTypes, syncedAt); });
+        var areaMap = partyAreas_(fresh, areaCtx);
+        var rows = fresh.map(function (d) { return buildLogRow_(d, header, jarTypes, syncedAt, areaMap); });
         var startRow = sheet.getLastRow() + 1;
         ensureCapacity_(sheet, startRow + rows.length, header.length);
         sheet.getRange(startRow, 1, rows.length, header.length).setValues(rows);
@@ -364,14 +383,14 @@ function syncLog() {
 // Sync: Parties + Daily + Status totals (daily, or on demand)
 // ---------------------------------------------------------------------------------------------
 function buildPartyRows_(parties, jarTypes) {
-  var header = ['Party', 'Phone', 'Address', 'Active', 'Outstanding (Rs)', 'Deposit held (Rs)', 'Jars with party']
+  var header = ['Party', 'Phone', 'Address', 'Area', 'Active', 'Outstanding (Rs)', 'Deposit held (Rs)', 'Jars with party']
     .concat(jarTypes.map(function (j) { return 'Jars: ' + j.name; }))
     .concat(['Opening balance (Rs)', 'Last entry', 'Party ID']);
   var sorted = parties.slice().sort(function (a, b) { return String(a.name || '').toLowerCase() < String(b.name || '').toLowerCase() ? -1 : 1; });
   var rows = sorted.map(function (p) {
     var jb = p.jarBalance || {};
     var text = jarTypes.filter(function (j) { return jb[j.id]; }).map(function (j) { return jb[j.id] + ' x ' + j.name; }).join(', ');
-    return [p.name || '', p.phone || '', p.address || '', p.active === false ? 'No' : 'Yes', rupees_(p.outstanding || 0), rupees_(p.depositBalance || 0), text]
+    return [p.name || '', p.phone || '', p.address || '', p.area || '', p.active === false ? 'No' : 'Yes', rupees_(p.outstanding || 0), rupees_(p.depositBalance || 0), text]
       .concat(jarTypes.map(function (j) { return jb[j.id] || 0; }))
       .concat([rupees_(p.openingBalance || 0), p.lastTxnAt || '', p.id]);
   });

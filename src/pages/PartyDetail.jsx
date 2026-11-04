@@ -4,11 +4,12 @@ import { useStore } from '../data/store.jsx';
 import { listTxns, softDeleteTxn } from '../data/api.js';
 import { askLinkedDelete } from '../lib/linkedDelete.js';
 import { dueView } from '../lib/advance.js';
-import { Receipt, HandCoins, ArrowUUpLeft, Bank, ShareNetwork, Phone, WhatsappLogo, Trash, ListBullets, FilePdf } from '@phosphor-icons/react';
+import { Receipt, HandCoins, ArrowUUpLeft, Bank, ShareNetwork, Phone, WhatsappLogo, Trash, ListBullets, FilePdf, ArrowsClockwise } from '@phosphor-icons/react';
 import { Page, Tabs, Spinner, Empty, Modal, Avatar, useToast } from '../components/ui.jsx';
 import TxnRow, { EditLink } from '../components/TxnRow.jsx';
 import ShareBillModal from '../components/ShareBillModal.jsx';
 import { describeTxn } from '../lib/describe.js';
+import { findLastBill } from '../lib/repeatBill.js';
 import { buildStatementPdf } from '../lib/pdf.js';
 import { sharePdf, statementText, waLink, shareText } from '../lib/share.js';
 
@@ -25,6 +26,7 @@ export default function PartyDetail() {
   const [loading, setLoading] = useState(true);
   const [shareBill, setShareBill] = useState(null);
   const [stmtOpen, setStmtOpen] = useState(false);
+  const [finding, setFinding] = useState(false);
 
   const load = useCallback(async (more) => {
     setLoading(true);
@@ -47,6 +49,8 @@ export default function PartyDetail() {
     });
   }, [entries, party, jarName, money]);
 
+  const lastBill = useMemo(() => findLastBill(entries), [entries]);
+
   if (!party) return <Page title="Party" back="/parties"><Empty>Party nahi mili</Empty></Page>;
 
   async function del(t) {
@@ -63,6 +67,11 @@ export default function PartyDetail() {
   const actions = (row) => (
     <>
       {row.t.type === 'bill' && <button className="btn btn-sm" onClick={() => setShareBill(row.t)}><ShareNetwork size={18} />Share</button>}
+      {row.t.type === 'bill' && (
+        <button className="btn btn-sm !min-h-[44px] !min-w-[44px]" aria-label="Is bill ko dobara banao" onClick={() => nav(`/bill/new?party=${id}&repeat=${row.t.id}`)}>
+          <ArrowsClockwise size={18} /><span className="hidden min-[400px]:inline">Dobara</span>
+        </button>
+      )}
       <EditLink t={row.t} />
       <button className="btn btn-sm !text-red-600" onClick={() => del(row.t)}><Trash size={18} />Delete</button>
     </>
@@ -74,6 +83,23 @@ export default function PartyDetail() {
   const jarBal = party.jarBalance || {};
   const totalJars = Object.values(jarBal).reduce((a, b) => a + b, 0);
   const q = (path) => `${path}?party=${id}`;
+
+  // 'Pichhla bill dobara': uses the newest bill already loaded; if the loaded page has none, looks through a few more pages.
+  async function repeatLast() {
+    if (lastBill) return nav(`/bill/new?party=${id}&repeat=${lastBill.id}`);
+    setFinding(true);
+    try {
+      let cur = cursor; let more = hasMore; let acc = entries;
+      for (let i = 0; i < 4 && more && !findLastBill(acc); i += 1) {
+        const r = await listTxns({ partyId: id, after: cur });
+        acc = [...acc, ...r.items]; cur = r.last; more = r.hasMore;
+      }
+      setEntries(acc); setCursor(cur); setHasMore(more);
+      const found = findLastBill(acc);
+      if (found) nav(`/bill/new?party=${id}&repeat=${found.id}`);
+      else toast(more ? 'Pichhle entries mein koi bill nahi mila. Load more karke dekho.' : 'Is party ka abhi koi bill nahi hai.', 'warn');
+    } catch (e) { toast(`Bill dhundh nahi paya: ${e.message}`, 'err', 6000); } finally { setFinding(false); }
+  }
 
   async function stmtPdf() {
     const doc = await buildStatementPdf({ party, rows, settings, jarName });
@@ -105,6 +131,11 @@ export default function PartyDetail() {
           <Link key={label} to={to} className={`btn flex-col !gap-1 !py-2 !px-1 min-h-[64px] text-xs ${primary ? 'btn-primary' : ''}`}><Icon size={22} />{label}</Link>
         ))}
       </div>
+      {(lastBill || hasMore) && (
+        <button className="btn w-full" disabled={finding || (loading && !entries.length)} onClick={repeatLast}>
+          <ArrowsClockwise size={20} />{finding ? 'Dhundh raha hai...' : 'Pichhla bill dobara'}
+        </button>
+      )}
       <div className="grid grid-cols-1 min-[340px]:grid-cols-3 gap-2">
         <button className="btn btn-sm" onClick={() => setStmtOpen(true)}><ShareNetwork size={18} />Statement</button>
         <a className={`btn btn-sm ${party.phone ? '' : 'opacity-50 pointer-events-none'}`} href={`tel:${party.phone}`}><Phone size={18} />Call</a>

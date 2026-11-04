@@ -19,7 +19,7 @@ vi.mock('../../src/lib/firebase.js', async () => {
 
 const api = await import('../../src/data/api.js');
 const { db } = await import('../../src/lib/firebase.js');
-const { collection, doc, getDocs, getDoc } = await import('firebase/firestore');
+const { collection, doc, getDocs, getDoc, setDoc } = await import('firebase/firestore');
 
 // ---------------------------------------------------------------------------------------------
 // Apps Script runtime stubs
@@ -79,11 +79,13 @@ function loadScript() {
     deleteSheet: (s) => { sheets.splice(sheets.indexOf(s), 1); },
   };
   const props = {};
+  const cacheStore = {};
   const sandbox = {
     console,
     SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet, getUi: () => ({ createMenu: () => ({ addItem() { return this; }, addSeparator() { return this; }, addToUi() {} }), alert() {} }) },
     ScriptApp: { getOAuthToken: () => 'owner', getProjectTriggers: () => [], deleteTrigger() {}, newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create() {} }), everyDays: () => ({ atHour: () => ({ create() {} }) }) }) }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); } }) },
+    CacheService: { getScriptCache: () => ({ get: (k) => (k in cacheStore ? cacheStore[k] : null), put: (k, v) => { cacheStore[k] = String(v); } }) },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
     Utilities: { formatDate: (d) => d.toISOString().replace('T', ' ').slice(0, 19) },
     Session: { getScriptTimeZone: () => 'UTC' },
@@ -142,6 +144,7 @@ describe('Code.gs against the Firestore emulator', () => {
       name: 'Ram Traders', phone: '9999999999', address: '12 Main Road', notes: '', active: true,
       openingBalance: 100000, openingJars: { [jar20]: 2 }, openingDeposit: 50000, jarRates: {}, itemRates: {},
     });
+    await setDoc(doc(db, 'parties', partyId), { area: 'Sai Nagar' }, { merge: true }); // the Area tag
   });
 
   it('1. first sync logs one row per transaction with correct values', async () => {
@@ -174,6 +177,7 @@ describe('Code.gs against the Firestore emulator', () => {
     expect(new Set(rows.map((r) => r['Txn ID'])).size).toBe(8);
     expect(rows.every((r) => r.Event === 'Created')).toBe(true);
     expect(rows.every((r) => r.Party === 'Ram Traders' && r['Party ID'] === partyId)).toBe(true);
+    expect(rows.every((r) => r.Area === 'Sai Nagar')).toBe(true); // area looked up from the party
 
     const bill = rows.find((r) => r.Type === 'Bill');
     expect(bill['Bill no']).toBe('00001');
@@ -281,6 +285,7 @@ describe('Code.gs against the Firestore emulator', () => {
     const row = parties[0];
     expect(row.Party).toBe('Ram Traders');
     expect(row.Phone).toBe('9999999999');
+    expect(row.Area).toBe('Sai Nagar');
     expect(row['Outstanding (Rs)']).toBe(p.outstanding / 100);
     expect(row['Deposit held (Rs)']).toBe(p.depositBalance / 100);
     expect(row['Jars: 20L Jar']).toBe(p.jarBalance[jar20] || 0);

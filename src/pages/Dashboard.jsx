@@ -65,7 +65,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 min-[340px]:grid-cols-2 gap-x-6">
           <Stat label="Total jars out" value={totalJars} sub={jars.map(([id, n]) => `${n}×${jarName(id)}`).join(', ') || 'No jars out'} />
           <Stat label="Deposit held" value={money(summary?.totalDepositHeld || 0)} />
-          <Stat label="Aaj ki sales" value={money(daily?.sales || 0)} sub={`${daily?.billsCount || 0} bills`} />
+          <Stat label="Aaj ki sales" value={money(daily?.sales || 0)} sub={`${daily?.billsCount || 0} ${(daily?.billsCount || 0) === 1 ? 'bill' : 'bills'}`} />
           <Stat label="Aaj ki collection" value={money(daily?.collection || 0)} tone="text-emerald-600" />
         </div>
       </section>

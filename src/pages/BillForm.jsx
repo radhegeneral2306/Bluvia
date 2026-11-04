@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Trash, Plus } from '@phosphor-icons/react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Trash, Plus, ArrowLeft, UsersThree } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 import { createBill, updateTxn, getOne } from '../data/api.js';
 import { Page, Field, MoneyInput, QtyInput, StickyBar, Spinner, useToast } from '../components/ui.jsx';
@@ -10,6 +10,13 @@ import { todayKey } from '../lib/dates.js';
 import { lineAmount, billTotals } from '../lib/money.js';
 import { rateFor, depositPerJar } from '../lib/rates.js';
 import { planChange, negativeJarWarnings } from '../lib/ledger.js';
+import { dueView } from '../lib/advance.js';
+
+// Unsaved new-bill draft lives in sessionStorage so an accidental reload or back does not lose the work.
+const DRAFT_KEY = 'bluvia_bill_draft';
+const readDraft = () => { try { return JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null'); } catch { return null; } };
+const writeDraft = (d) => { try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch { /* ignore */ } };
+const clearDraft = () => { try { sessionStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } };
 
 function Switch({ checked, onChange, children }) {
   return (
@@ -32,7 +39,7 @@ export default function BillForm() {
   const [sp] = useSearchParams();
   const nav = useNavigate();
   const toast = useToast();
-  const { items, itemMap, jarMap, jarTypes, partyMap, jarName, money, settings } = useStore();
+  const { items, itemMap, jarMap, jarTypes, parties, partyMap, jarName, money, settings } = useStore();
   const [old, setOld] = useState(null);
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -54,7 +61,15 @@ export default function BillForm() {
           lines: t.lines.map((l) => ({ key: `l${++seq}`, itemId: l.itemId, qty: l.qty, rate: l.rate, rateTouched: true, jarGiven: l.jarGiven !== false })),
         });
       } else {
-        setF({ partyId: sp.get('party') || '', dateKey: todayKey(), forText: settings.invoiceFor || '', discount: 0, extraCharge: 0, note: '', lines: [newLine()] });
+        const d = readDraft();
+        const want = sp.get('party') || '';
+        if (d && d.f && (!want || d.f.partyId === want)) {
+          seq = Math.max(seq, ...d.f.lines.map((l) => Number(String(l.key).slice(1)) || 0));
+          setF(d.f); setReturns(d.returns || {}); setDepOn(!!d.depOn); setDepAmt(d.depAmt || 0);
+          if (d.depTouched) depTouched.current = true;
+        } else {
+          setF({ partyId: want, dateKey: todayKey(), forText: settings.invoiceFor || '', discount: 0, extraCharge: 0, note: '', lines: [newLine()] });
+        }
       }
     })();
   }, [f, id, sp, nav]);
@@ -82,6 +97,24 @@ export default function BillForm() {
     return { sum, type: types.size === 1 ? [...types][0] : null };
   }, [built, party, jarMap]);
   useEffect(() => { if (depOn && !depTouched.current) setDepAmt(suggestedDep.sum); }, [depOn, suggestedDep.sum]);
+
+  // anything entered that would be lost if the screen is left (new bills only)
+  const dirty = !old && !!f && f.lines.some((l) => l.itemId && l.qty > 0);
+  useEffect(() => {
+    if (!f || old || saved) return;
+    writeDraft({ f, returns, depOn, depAmt, depTouched: depTouched.current });
+  }, [f, returns, depOn, depAmt, old, saved]);
+  useEffect(() => {
+    if (!dirty || saved) return undefined;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty, saved]);
+  function goBack() {
+    if (dirty && !window.confirm('Bill adhoora hai. Chhod dein?')) return;
+    clearDraft();
+    nav(-1);
+  }
 
   if (!f) return <Spinner />;
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
@@ -120,6 +153,7 @@ export default function BillForm() {
           ...bill, depositAmount: depOn ? depAmt : 0, depositJarTypeId: depOn ? suggestedDep.type : null,
           returns: Object.fromEntries(Object.entries(returns).filter(([, n]) => n > 0)),
         });
+        clearDraft();
         toast(`Bill ${r.billNo} save ho gaya`);
         setSaved({ ...bill, id: r.id, billNo: r.billNo, prevOutstanding: r.prevOutstanding, newOutstanding: r.prevOutstanding + total, jarBalanceAfter: r.jarBalanceAfter, depositCollectedInBill: depOn ? depAmt : 0, returnedInBill: Object.fromEntries(Object.entries(returns).filter(([, n]) => n > 0)) });
       }
@@ -133,13 +167,26 @@ export default function BillForm() {
 
   const newDue = party ? (old ? old.prevOutstanding || 0 : party.outstanding || 0) + total : 0;
   return (
-    <Page title={old ? `Edit bill ${old.billNo}` : 'New bill'} back>
+    <Page title={(
+      <span className="flex items-center gap-2 min-w-0">
+        <button type="button" className="btn btn-ghost !min-h-[44px] !w-11 !px-0 -ml-2 rounded-full shrink-0" onClick={goBack} aria-label="Wapas"><ArrowLeft size={22} /></button>
+        <span className="truncate">{old ? `Edit bill ${old.billNo}` : 'New bill'}</span>
+      </span>
+    )}>
       <section className="space-y-3">
-        <Field label="Party"><PartyPicker value={f.partyId} onChange={pickParty} /></Field>
+        {!parties.length && !old ? (
+          <div className="card p-4 flex items-center gap-3">
+            <span className="w-10 h-10 shrink-0 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center"><UsersThree size={20} /></span>
+            <div className="min-w-0 flex-1"><div className="font-semibold">Pehle party jodo</div><div className="text-xs text-slate-500">Bill banane ke liye kam se kam ek party chahiye.</div></div>
+            <Link to="/party/new" className="btn btn-primary btn-sm shrink-0">Party jodo</Link>
+          </div>
+        ) : (
+          <Field label="Party"><PartyPicker value={f.partyId} onChange={pickParty} /></Field>
+        )}
         {party && (
-          <div className="flex items-center justify-between text-sm px-1">
-            <span className="text-slate-500">Abhi baaki</span>
-            <span className={`num font-semibold ${(party.outstanding || 0) > 0 ? 'text-red-600' : 'text-slate-800'}`}>{money(party.outstanding || 0)}</span>
+          <div className="flex items-center justify-between gap-3 text-sm px-1">
+            <span className="text-slate-500">{dueView(party.outstanding).label === 'Advance' ? 'Abhi advance' : 'Abhi baaki'}</span>
+            <span className={`num font-semibold ${dueView(party.outstanding).tone}`}>{money(dueView(party.outstanding).amount)}</span>
           </div>
         )}
         <Field label="Date"><input type="date" className="input num" value={f.dateKey} onChange={(e) => set('dateKey', e.target.value || todayKey())} /></Field>
@@ -163,7 +210,7 @@ export default function BillForm() {
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3 items-end">
+              <div className="grid grid-cols-1 min-[340px]:grid-cols-2 gap-3 items-end">
                 <Field label={`Qty${it?.unit ? ` (${it.unit})` : ''}`}><QtyInput integer={isJar} value={l.qty} onChange={(v) => setLine(l.key, { qty: v })} /></Field>
                 <Field label="Rate"><MoneyInput value={l.rate} onChange={(v) => setLine(l.key, { rate: v, rateTouched: true })} /></Field>
               </div>
@@ -227,14 +274,14 @@ export default function BillForm() {
         </div>
         {party && (
           <div className="flex justify-between text-sm pt-1">
-            <span className="text-slate-500">Naya baaki (bill ke baad)</span>
-            <span className={`num font-semibold ${newDue > 0 ? 'text-red-600' : 'text-slate-800'}`}>{money(newDue)}</span>
+            <span className="text-slate-500">{newDue < 0 ? 'Naya advance (bill ke baad)' : 'Naya baaki (bill ke baad)'}</span>
+            <span className={`num font-semibold ${dueView(newDue).tone}`}>{money(dueView(newDue).amount)}</span>
           </div>
         )}
       </section>
 
       <StickyBar>
-        <button className="btn flex-1" onClick={() => nav(-1)}>Cancel</button>
+        <button className="btn flex-1" onClick={goBack}>Cancel</button>
         <button className="btn btn-primary flex-[2]" disabled={busy} onClick={save}>{busy ? 'Saving…' : `Save ${money(total)}`}</button>
       </StickyBar>
       <ShareBillModal bill={saved} onClose={() => nav(`/party/${f.partyId}`, { replace: true })} />

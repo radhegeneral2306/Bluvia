@@ -4,6 +4,15 @@ import { useStore } from '../data/store.jsx';
 import { createParty, updateParty } from '../data/api.js';
 import { Page, Field, MoneyInput, QtyInput, StickyBar, useToast } from '../components/ui.jsx';
 
+/** Phone: empty is fine; otherwise only digits, spaces, + and -, with 7 to 15 digits. */
+const phoneInvalid = (p) => {
+  const s = (p || '').trim();
+  if (!s) return false;
+  if (!/^[0-9+\s-]+$/.test(s)) return true;
+  const d = s.replace(/\D/g, '').length;
+  return d < 7 || d > 15;
+};
+
 const blank = {
   name: '', phone: '', address: '', notes: '', active: true,
   openingBalance: 0, openingJars: {}, openingDeposit: 0, jarRates: {}, itemRates: {},
@@ -26,6 +35,10 @@ export default function PartyForm() {
 
   async function save() {
     if (!f.name.trim()) return toast('Party ka naam likho', 'err');
+    if (phoneInvalid(f.phone)) return toast('Phone number sahi nahi hai (7 se 15 digit)', 'err');
+    const nm = f.name.trim().toLowerCase();
+    if (!id && Object.values(partyMap).some((p) => (p.name || '').trim().toLowerCase() === nm)
+      && !window.confirm('Is naam ki party pehle se hai. Phir bhi nayi party banani hai?')) return;
     setBusy(true);
     try {
       const jarRates = {};
@@ -48,8 +61,11 @@ export default function PartyForm() {
   return (
     <Page title={id ? 'Edit party' : 'New party'} back>
       <div className="card p-4 space-y-3">
-        <Field label="Name *"><input className="input" value={f.name} onChange={(e) => set('name', e.target.value)} /></Field>
-        <Field label="Phone"><input className="input" inputMode="tel" value={f.phone} onChange={(e) => set('phone', e.target.value)} /></Field>
+        <Field label="Name *"><input className="input" autoComplete="off" value={f.name} onChange={(e) => set('name', e.target.value)} /></Field>
+        <Field label="Phone">
+          <input className="input" inputMode="tel" value={f.phone} onChange={(e) => set('phone', e.target.value)} aria-invalid={phoneInvalid(f.phone)} aria-describedby="phone-err" />
+        </Field>
+        {phoneInvalid(f.phone) && <p id="phone-err" className="text-sm text-red-600 -mt-1.5" role="alert">Phone mein sirf digit, space, + ya - ho sakte hain, aur 7 se 15 digit chahiye.</p>}
         <Field label="Address"><textarea className="input !py-2" rows={2} value={f.address} onChange={(e) => set('address', e.target.value)} /></Field>
         <Field label="Notes"><input className="input" value={f.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
         <label className="flex items-center gap-3 min-h-[48px] font-medium"><input type="checkbox" className="w-5 h-5" checked={f.active !== false} onChange={(e) => set('active', e.target.checked)} /> Active</label>

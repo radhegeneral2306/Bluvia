@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ArrowCounterClockwise, ClockCounterClockwise } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 import { listTxns, restoreTxn } from '../data/api.js';
 import { Page, Spinner, Empty, useToast } from '../components/ui.jsx';
@@ -30,9 +31,9 @@ export default function Deleted() {
   return (
     <Page title="Deleted entries" back="/more">
       <p className="text-sm text-slate-600">Yeh entries balance mein nahi ginti. Restore karne par wapas balance mein judengi.</p>
-      {loading && !items.length ? <Spinner /> : !rows.length ? <Empty>Koi deleted entry nahi</Empty> : (
+      {loading && !items.length ? <Spinner /> : !rows.length ? <Empty icon={ClockCounterClockwise} title="Koi deleted entry nahi">Delete ki hui entries yahan dikhengi aur wapas aa sakti hain.</Empty> : (
         <div className="space-y-2">
-          {rows.map((r) => <TxnRow key={r.t.id} row={r} money={money} showParty actions={(row) => <button className="btn btn-sm btn-primary" onClick={() => restore(row.t)}>♻️ Restore</button>} />)}
+          {rows.map((r) => <TxnRow key={r.t.id} row={r} money={money} showParty actions={(row) => <button className="btn btn-sm btn-primary" onClick={() => restore(row.t)}><ArrowCounterClockwise size={18} />Restore</button>} />)}
         </div>
       )}
       {hasMore && <button className="btn w-full" disabled={loading} onClick={() => load(true)}>Load more</button>}

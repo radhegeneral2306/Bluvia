@@ -113,7 +113,7 @@ export default function BillForm() {
     try {
       if (old) {
         const st = await updateTxn(old, bill);
-        toast(st === 'queued' ? 'Phone par save hua — internet aate hi sync hoga' : 'Bill update ho gaya', st === 'queued' ? 'warn' : 'ok');
+        toast(st === 'queued' ? 'Phone par save hua. Internet aate hi sync hoga' : 'Bill update ho gaya', st === 'queued' ? 'warn' : 'ok');
         setSaved({ ...old, ...bill, newOutstanding: (old.prevOutstanding || 0) + total });
       } else {
         const r = await createBill({

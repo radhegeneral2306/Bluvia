@@ -101,7 +101,7 @@ export default function EntryForm() {
       let status;
       if (old) status = await updateTxn(old, t);
       else status = (await createEntry(t)).status;
-      toast(status === 'queued' ? 'Phone par save hua — internet aate hi sync hoga' : 'Save ho gaya', status === 'queued' ? 'warn' : 'ok');
+      toast(status === 'queued' ? 'Phone par save hua. Internet aate hi sync hoga' : 'Save ho gaya', status === 'queued' ? 'warn' : 'ok');
       nav(`/party/${f.partyId}`, { replace: true });
     } catch (e) { toast(e.message, 'err'); setBusy(false); }
   }
@@ -111,19 +111,19 @@ export default function EntryForm() {
   return (
     <Page title={`${old ? 'Edit ' : ''}${GROUPS[group].title}`} back>
       {tabs && <Tabs tabs={tabs} value={f.type} onChange={(v) => set('type', v)} />}
-      <div className="card p-4 space-y-3">
+      <div className="space-y-4">
         <Field label="Party"><PartyPicker value={f.partyId} onChange={(v) => upd(group === 'jar' && !old ? { partyId: v, jarTypeId: bestJar(partyMap[v], jarTypes, f.jarTypeId) } : { partyId: v })} /></Field>
         {party && (
-          <div className="text-sm bg-slate-50 rounded-xl p-2 flex justify-between">
-            <span>Baaki: <b>{money(party.outstanding || 0)}</b></span>
-            <span>Deposit: <b>{money(party.depositBalance || 0)}</b></span>
-          </div>
+          <dl className="grid grid-cols-2 gap-4 text-sm px-1">
+            <div><dt className="text-slate-500">Baaki</dt><dd className={`num text-base font-semibold ${(party.outstanding || 0) > 0 ? 'text-red-600' : 'text-slate-800'}`}>{money(party.outstanding || 0)}</dd></div>
+            <div><dt className="text-slate-500">Deposit</dt><dd className="num text-base font-semibold text-slate-800">{money(party.depositBalance || 0)}</dd></div>
+          </dl>
         )}
-        <Field label="Date"><input type="date" className="input" value={f.dateKey} onChange={(e) => set('dateKey', e.target.value || todayKey())} /></Field>
+        <Field label="Date"><input type="date" className="input num" value={f.dateKey} onChange={(e) => set('dateKey', e.target.value || todayKey())} /></Field>
 
         {group === 'receipt' && (
           <>
-            <Field label="Amount"><MoneyInput autoFocus value={f.amount} onChange={(v) => set('amount', v)} /></Field>
+            <Field label="Amount"><MoneyInput className="!text-2xl !min-h-[60px] font-semibold" autoFocus value={f.amount} onChange={(v) => set('amount', v)} /></Field>
             <Field label="Payment mode">
               <select className="input" value={f.mode} onChange={(e) => set('mode', e.target.value)}>
                 {[...new Set([...(settings.paymentModes || []), f.mode].filter(Boolean))].map((m) => <option key={m}>{m}</option>)}
@@ -140,8 +140,8 @@ export default function EntryForm() {
                 {jarTypes.filter((j) => j.active !== false || j.id === f.jarTypeId).map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
               </select>
             </Field>
-            {party && f.jarTypeId && <p className="text-sm text-slate-600">Abhi party ke paas: <b>{(party.jarBalance || {})[f.jarTypeId] || 0}</b> {jarName(f.jarTypeId)}</p>}
-            <Field label="Quantity"><QtyInput autoFocus value={f.qty} onChange={(v) => set('qty', v)} /></Field>
+            {party && f.jarTypeId && <p className="text-sm text-slate-600 px-1">Abhi party ke paas: <b className="num text-slate-900">{(party.jarBalance || {})[f.jarTypeId] || 0}</b> {jarName(f.jarTypeId)}</p>}
+            <Field label="Quantity"><QtyInput className="!text-2xl !min-h-[60px] font-semibold" autoFocus value={f.qty} onChange={(v) => set('qty', v)} /></Field>
           </>
         )}
 
@@ -149,7 +149,7 @@ export default function EntryForm() {
           <>
             <Field label="Jar type (optional)">
               <select className="input" value={f.jarTypeId || ''} onChange={(e) => upd({ jarTypeId: e.target.value || null })}>
-                <option value="">— none —</option>
+                <option value="">Koi nahi</option>
                 {jarTypes.filter((j) => j.active !== false || j.id === f.jarTypeId).map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
               </select>
             </Field>
@@ -157,16 +157,16 @@ export default function EntryForm() {
               <QtyInput value={f.jarQty || 0} onChange={(v) => upd({ jarQty: v })} />
             </Field>
             <Field label="Deposit amount (badal sakte ho)">
-              <MoneyInput value={f.amount} onChange={(v) => { setTouchedAmt(true); set('amount', v); }} />
+              <MoneyInput className="!text-2xl !min-h-[60px] font-semibold" value={f.amount} onChange={(v) => { setTouchedAmt(true); set('amount', v); }} />
             </Field>
-            {f.type === 'depositAdjust' && <p className="text-xs text-slate-500">Adjust = deposit bhi kam hoga aur party ka baaki bhi utna kam hoga.</p>}
+            {f.type === 'depositAdjust' && <p className="text-xs text-slate-500 px-1">Adjust = deposit bhi kam hoga aur party ka baaki bhi utna kam hoga.</p>}
           </>
         )}
 
         {group === 'adjustment' && (
           <>
-            <Tabs tabs={[['1', 'Baaki badhao (+)'], ['-1', 'Baaki ghatao (−)']]} value={String(f.amountSign)} onChange={(v) => set('amountSign', Number(v))} />
-            <Field label="Amount"><MoneyInput value={f.amount} onChange={(v) => set('amount', v)} /></Field>
+            <Tabs tabs={[['1', 'Baaki badhao (+)'], ['-1', 'Baaki ghatao (-)']]} value={String(f.amountSign)} onChange={(v) => set('amountSign', Number(v))} />
+            <Field label="Amount"><MoneyInput className="!text-2xl !min-h-[60px] font-semibold" value={f.amount} onChange={(v) => set('amount', v)} /></Field>
           </>
         )}
 

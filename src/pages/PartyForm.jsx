@@ -61,7 +61,7 @@ export default function PartyForm() {
         <Field label={`Baaki paisa (${money(0).replace('0', '')})`}><MoneyInput value={f.openingBalance} onChange={(v) => set('openingBalance', v)} /></Field>
         <Field label="Deposit jo hamare paas hai"><MoneyInput value={f.openingDeposit} onChange={(v) => set('openingDeposit', v)} /></Field>
         {activeJars.map((j) => (
-          <Field key={j.id} label={`Jars out — ${j.name}`}>
+          <Field key={j.id} label={`Jars out: ${j.name}`}>
             <QtyInput value={(f.openingJars || {})[j.id] || 0} onChange={(n) => set('openingJars', { ...f.openingJars, [j.id]: n })} />
           </Field>
         ))}

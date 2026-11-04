@@ -31,7 +31,7 @@ if (configured) {
 }
 // Dev/testing only: VITE_USE_EMULATOR=true talks to local Firebase emulators instead of the real project.
 if (configured && env.VITE_USE_EMULATOR === 'true') {
-  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
-  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  connectAuthEmulator(auth, `http://127.0.0.1:${env.VITE_EMULATOR_AUTH_PORT || 9099}`, { disableWarnings: true });
+  connectFirestoreEmulator(db, '127.0.0.1', Number(env.VITE_EMULATOR_FIRESTORE_PORT || 8080));
 }
 export { app, auth, db };

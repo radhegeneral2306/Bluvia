@@ -3,6 +3,7 @@ import { Calculator, Warning, CheckCircle } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 import { Page, Badge, useToast } from '../components/ui.jsx';
 import { computeRecalc, applyRecalc } from '../lib/recalcDb.js';
+import { confirmHeavyRun } from '../lib/backup.js';
 
 export default function Recalc() {
   const { money, jarName, online } = useStore();
@@ -13,6 +14,7 @@ export default function Recalc() {
   async function run() {
     if (!online) return toast('Internet chahiye', 'err');
     if (!window.confirm('Yeh saari parties aur saari entries padhega (bahut reads). Aage badhein?')) return;
+    if (!confirmHeavyRun('Recalculate')) return;
     setBusy('Padh raha hai…');
     try { setRes(await computeRecalc((c) => setBusy(`${c} padh raha hai…`))); }
     catch (e) { toast(e.message, 'err', 6000); } finally { setBusy(''); }

@@ -8,22 +8,25 @@ import { saveSettings } from '../data/api.js';
 import { Page, Field, StickyBar, useToast } from '../components/ui.jsx';
 import { getReads } from '../lib/reads.js';
 import { getTheme, setTheme } from '../lib/theme.js';
+import { areaList, addArea, removeArea, partiesUsingArea, strayAreas } from '../lib/areas.js';
 import { canInstall, promptInstall, onInstallChange, isStandalone, isIOS } from '../lib/pwa.js';
 
 const FREE_LIMIT = 50000;
 
 export default function Settings() {
-  const { settings, user } = useStore();
+  const { settings, user, parties } = useStore();
   const toast = useToast();
   const [f, setF] = useState(null);
   const [newMode, setNewMode] = useState('');
   const [, tick] = useState(0);
   const [busy, setBusy] = useState(false);
   const [nameErr, setNameErr] = useState('');
+  const [newArea, setNewArea] = useState('');
+  const [areaErr, setAreaErr] = useState('');
   const [nextEdited, setNextEdited] = useState(false); // did the user type in 'Next bill number'?
   const [theme, setThemeState] = useState(getTheme());
 
-  useEffect(() => { if (settings && !f) setF({ ...settings, paymentModes: [...(settings.paymentModes || [])] }); }, [settings, f]);
+  useEffect(() => { if (settings && !f) setF({ ...settings, paymentModes: [...(settings.paymentModes || [])], areas: areaList(settings) }); }, [settings, f]);
   useEffect(() => onInstallChange(() => tick((n) => n + 1)), []);
   // keep 'Next bill number' live (another device may issue bills) until the user edits it
   useEffect(() => {
@@ -44,7 +47,7 @@ export default function Settings() {
     try {
       const patch = {
         businessName: f.businessName.trim(), managerName: f.managerName || '', invoiceFor: f.invoiceFor || '', showDuesOnPdf: f.showDuesOnPdf !== false, billNoPad: Math.max(0, parseInt(f.billNoPad, 10) || 0), address: f.address || '', phone: f.phone || '', billPrefix: f.billPrefix || '',
-        footerNote: f.footerNote || '', currency: f.currency || '₹', countryCode: (f.countryCode || '').replace(/\D/g, ''), paymentModes: f.paymentModes,
+        footerNote: f.footerNote || '', currency: f.currency || '₹', countryCode: (f.countryCode || '').replace(/\D/g, ''), paymentModes: f.paymentModes, areas: areaList({ areas: f.areas }),
       };
       // Only send the bill counter when the user changed it. Otherwise a stale form would roll the counter back
       // and the next bill would repeat an invoice number issued from another device.
@@ -58,6 +61,18 @@ export default function Settings() {
     const m = newMode.trim();
     if (!m || f.paymentModes.includes(m)) return;
     setF({ ...f, paymentModes: [...f.paymentModes, m] }); setNewMode('');
+  };
+  const areas = areaList({ areas: f.areas });
+  const stray = strayAreas(areas, parties);
+  const doAddArea = (name) => {
+    const r = addArea(areas, name);
+    setAreaErr(r.error);
+    if (!r.error) { setF({ ...f, areas: r.list }); setNewArea(''); }
+  };
+  const doRemoveArea = (a) => {
+    const r = removeArea(areas, a, parties);
+    setAreaErr(r.error);
+    if (!r.error) setF({ ...f, areas: r.list });
   };
   const reads = getReads();
 
@@ -112,6 +127,39 @@ export default function Settings() {
             <input className="input" placeholder="New mode (e.g. Cheque)" aria-label="Naya payment mode" value={newMode} onChange={(e) => setNewMode(e.target.value)} />
             <button className="btn" onClick={addMode}><Plus size={18} weight="bold" />Add</button>
           </div>
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <H>Areas</H>
+        <div className="card p-4 space-y-3">
+          {areas.length ? (
+            <div className="flex flex-wrap gap-2">
+              {areas.map((a) => (
+                <span key={a} className="inline-flex items-center gap-1 rounded-full bg-slate-100 text-slate-800 text-sm font-medium pl-3 pr-1 min-h-[44px]">
+                  {a}<span className="text-xs text-slate-500 num">({partiesUsingArea(parties, a).length})</span>
+                  <button className="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 active:bg-slate-200" aria-label={`${a} hatao`}
+                    onClick={() => doRemoveArea(a)}><X size={16} weight="bold" /></button>
+                </span>
+              ))}
+            </div>
+          ) : <p className="text-sm text-slate-500">Abhi koi area nahi hai. Neeche naya area jodo, jaise Sai Nagar ya Market.</p>}
+          <div className="flex gap-2">
+            <input className="input" placeholder="Naya area (jaise Sai Nagar)" aria-label="Naya area" value={newArea} aria-invalid={!!areaErr}
+              onChange={(e) => { setNewArea(e.target.value); setAreaErr(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doAddArea(newArea); } }} />
+            <button className="btn" onClick={() => doAddArea(newArea)}><Plus size={18} weight="bold" />Add</button>
+          </div>
+          {areaErr && <p className="text-xs text-red-600" role="alert">{areaErr}</p>}
+          <p className="text-xs text-slate-500">Naam badal nahi sakte, sirf jodo ya hatao. Hatane ke liye us area mein koi party nahi honi chahiye. Neeche "Save settings" dabana na bhoolo.</p>
+          {stray.length > 0 && (
+            <div className="rounded-xl bg-slate-50 p-3 space-y-2">
+              <p className="text-xs text-slate-500">In areas ki parties hain par list mein nahi: {stray.join(', ')}</p>
+              <div className="flex flex-wrap gap-2">
+                {stray.map((a) => <button key={a} className="btn btn-sm" onClick={() => doAddArea(a)}><Plus size={16} weight="bold" />Add to list: {a}</button>)}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../data/store.jsx';
 import { createParty, updateParty } from '../data/api.js';
 import { Page, Field, MoneyInput, QtyInput, StickyBar, useToast } from '../components/ui.jsx';
+import { areaList, areaOf } from '../lib/areas.js';
 
 /** Phone: empty is fine; otherwise only digits, spaces, + and -, with 7 to 15 digits. */
 const phoneInvalid = (p) => {
@@ -14,7 +15,7 @@ const phoneInvalid = (p) => {
 };
 
 const blank = {
-  name: '', phone: '', address: '', notes: '', active: true,
+  name: '', phone: '', address: '', area: '', notes: '', active: true,
   openingBalance: 0, openingJars: {}, openingDeposit: 0, jarRates: {}, itemRates: {},
 };
 
@@ -22,7 +23,7 @@ export default function PartyForm() {
   const { id } = useParams();
   const nav = useNavigate();
   const toast = useToast();
-  const { partyMap, jarTypes, items, money } = useStore();
+  const { partyMap, jarTypes, items, money, settings } = useStore();
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
   const old = id ? partyMap[id] : null;
@@ -46,7 +47,7 @@ export default function PartyForm() {
       const openingJars = {};
       for (const [j, n] of Object.entries(f.openingJars || {})) if (n) openingJars[j] = n;
       const data = {
-        name: f.name.trim(), phone: (f.phone || '').trim(), address: f.address || '', notes: f.notes || '', active: f.active !== false,
+        name: f.name.trim(), phone: (f.phone || '').trim(), address: f.address || '', area: areaOf(f), notes: f.notes || '', active: f.active !== false,
         openingBalance: f.openingBalance || 0, openingJars, openingDeposit: f.openingDeposit || 0, jarRates, itemRates: f.itemRates || {},
       };
       if (id) { await updateParty(id, old, data); nav(`/party/${id}`, { replace: true }); }
@@ -55,6 +56,9 @@ export default function PartyForm() {
     } catch (e) { toast(e.message, 'err'); setBusy(false); }
   }
 
+  const areas = areaList(settings);
+  const curArea = areaOf(f);
+  const areaOptions = curArea && !areas.some((a) => a.toLowerCase() === curArea.toLowerCase()) ? [...areas, curArea] : areas; // never lose an area that is not in the list any more
   const activeJars = jarTypes.filter((j) => j.active !== false || f.jarRates[j.id] || (f.openingJars || {})[j.id]);
   const nonJarItems = items.filter((i) => !i.jarTypeId && i.active !== false);
 
@@ -67,6 +71,13 @@ export default function PartyForm() {
         </Field>
         {phoneInvalid(f.phone) && <p id="phone-err" className="text-sm text-red-600 -mt-1.5" role="alert">Phone mein sirf digit, space, + ya - ho sakte hain, aur 7 se 15 digit chahiye.</p>}
         <Field label="Address"><textarea className="input !py-2" rows={2} value={f.address} onChange={(e) => set('address', e.target.value)} /></Field>
+        <Field label="Area">
+          <select className="input" value={curArea} onChange={(e) => set('area', e.target.value)}>
+            <option value="">Koi area nahi</option>
+            {areaOptions.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </Field>
+        {!areas.length && <p className="text-xs text-slate-500 -mt-1.5">Abhi koi area nahi hai. <Link to="/settings" className="text-brand-700 underline">Pehle Settings mein area jodo</Link></p>}
         <Field label="Notes"><input className="input" value={f.notes} onChange={(e) => set('notes', e.target.value)} /></Field>
         <label className="flex items-center gap-3 min-h-[48px] font-medium"><input type="checkbox" className="w-5 h-5" checked={f.active !== false} onChange={(e) => set('active', e.target.checked)} /> Active</label>
       </div>

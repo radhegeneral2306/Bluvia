@@ -44,6 +44,7 @@ function makeWorld() {
     getSheets: () => [...sheets.values()], deleteSheet: (s) => sheets.delete(s.getName()),
   };
   const calls = [];
+  const cache = {}; let cacheNow = 0;
   const fetch = (url, opts) => {
     calls.push(url);
     const body = opts.payload ? JSON.parse(opts.payload) : null;
@@ -69,11 +70,12 @@ function makeWorld() {
     SpreadsheetApp: { getActiveSpreadsheet: () => ss, getUi: () => ({ alert() {}, createMenu: () => ({ addItem() { return this; }, addSeparator() { return this; }, addToUi() {} }) }) },
     UrlFetchApp: { fetch }, ScriptApp: { getOAuthToken: () => 'tok', getProjectTriggers: () => [], newTrigger: () => ({ timeBased: () => ({ everyMinutes() { return this; }, everyDays() { return this; }, atHour() { return this; }, create() {} }) }), deleteTrigger() {} },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; } }) },
+    CacheService: { getScriptCache: () => ({ get: (k) => (cache[k] && cache[k].exp > cacheNow ? cache[k].v : null), put: (k, v, ttl) => { cache[k] = { v, exp: cacheNow + ttl * 1000 }; } }) },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
     Utilities: { formatDate: () => '2026-11-04 10:00:00' }, Session: { getScriptTimeZone: () => 'Asia/Kolkata' }, Logger: { log() {} }, JSON, Date, Math, Object, Array, String, Number, RegExp, Error,
   });
   vm.runInContext(CODE, ctx);
-  return { db, sheets, props, ctx, calls, log: () => (sheets.get('Log') ? sheets.get('Log')._s.data : []) };
+  return { db, sheets, props, ctx, calls, advance: (ms) => { cacheNow += ms; }, partiesReads: () => calls.filter((u) => /documents\/parties(\?|$)/.test(u)).length, log: () => (sheets.get('Log') ? sheets.get('Log')._s.data : []) };
 }
 
 const tx = (id, over = {}) => ({
@@ -228,7 +230,7 @@ describe('refreshParties', () => {
   it('writes Parties, Daily and Status totals in rupees', () => {
     const w = makeWorld();
     w.db.jarTypes.push({ id: 'j20', name: '20L Jar' });
-    w.db.parties.push({ id: 'p2', name: 'Zed', outstanding: 12345, depositBalance: 50000, jarBalance: { j20: 4 }, active: true, openingBalance: 0 },
+    w.db.parties.push({ id: 'p2', name: 'Zed', area: 'Sai Nagar', outstanding: 12345, depositBalance: 50000, jarBalance: { j20: 4 }, active: true, openingBalance: 0 },
       { id: 'p1', name: 'adam', outstanding: -500, depositBalance: 0, jarBalance: {}, active: false, openingBalance: 100 });
     w.db.stats.push({ id: 'summary', totalOutstanding: 11845, totalDepositHeld: 50000, totalJarsOut: { j20: 4 } },
       { id: 'daily_2026-11-03', dateKey: '2026-11-03', sales: 10000, collection: 2000, billsCount: 2 },
@@ -236,12 +238,85 @@ describe('refreshParties', () => {
     w.ctx.refreshParties();
     const parties = w.sheets.get('Parties')._s.data;
     expect(parties[0]).toContain('Outstanding (Rs)');
-    expect(parties[1][0]).toBe('adam'); expect(parties[1][4]).toBe(-5); expect(parties[1][3]).toBe('No');
-    expect(parties[2][0]).toBe('Zed'); expect(parties[2][4]).toBe(123.45); expect(parties[2][5]).toBe(500); expect(parties[2][6]).toBe('4 x 20L Jar');
+    expect(parties[0].slice(0, 5)).toEqual(['Party', 'Phone', 'Address', 'Area', 'Active']);   // Area sits right after Address
+    expect(parties[1][0]).toBe('adam'); expect(parties[1][3]).toBe(''); expect(parties[1][5]).toBe(-5); expect(parties[1][4]).toBe('No');
+    expect(parties[2][0]).toBe('Zed'); expect(parties[2][3]).toBe('Sai Nagar'); expect(parties[2][5]).toBe(123.45); expect(parties[2][6]).toBe(500); expect(parties[2][7]).toBe('4 x 20L Jar');
     const daily = w.sheets.get('Daily')._s.data;
     expect(daily[1][1]).toBe(999); expect(daily[1][3]).toBe(1);   // newest first
     expect(daily[2][1]).toBe(100);
     const status = Object.fromEntries(w.sheets.get('Status')._s.data.slice(1));
     expect(status['Total outstanding (Rs)']).toBe(118.45); expect(status['Total deposit held (Rs)']).toBe(500); expect(status['Jars out']).toBe('4 x 20L Jar');
+  });
+});
+
+describe('Area column in the Log', () => {
+  let w;
+  beforeEach(() => {
+    w = makeWorld(); w.db.jarTypes.push({ id: 'j20', name: '20L Jar' });
+    w.db.parties.push({ id: 'p1', name: 'Ram Traders', area: 'Sai Nagar' }, { id: 'p2', name: 'Shyam' });
+  });
+  const rowsByTxn = () => {
+    const [header, ...rows] = w.log();
+    return Object.fromEntries(rows.map((r) => [r[header.indexOf('Txn ID')], Object.fromEntries(header.map((h, i) => [h, r[i]]))]));
+  };
+
+  it('Area follows Party ID in the header', () => {
+    expect(w.ctx.LOG_FIXED.slice(7, 10)).toEqual(['Party', 'Party ID', 'Area']);
+  });
+
+  it('a Log row has the area of its party, or empty when the party has none', () => {
+    w.db.transactions.push(tx('a1', { partyId: 'p1', createdAt: at(1), updatedAt: at(1) }), tx('a2', { partyId: 'p2', createdAt: at(2), updatedAt: at(2) }));
+    w.ctx.syncLog();
+    const r = rowsByTxn();
+    expect(r.a1.Area).toBe('Sai Nagar'); expect(r.a2.Area).toBe('');
+  });
+
+  it('an existing Log tab without Area gets the column appended and old rows stay untouched', () => {
+    w.ctx.tab_('Log');
+    const oldHeader = w.ctx.LOG_FIXED.filter((h) => h !== 'Area');
+    w.sheets.get('Log')._s.data = [oldHeader, oldHeader.map((h) => (h === 'Txn ID' ? 'old1' : ''))];
+    w.db.transactions.push(tx('n1', { partyId: 'p1', createdAt: at(1), updatedAt: at(1) }));
+    w.ctx.syncLog();
+    const data = w.log();
+    const areaCol = data[0].indexOf('Area');
+    expect(areaCol).toBeGreaterThan(oldHeader.length - 1);   // appended on the right
+    expect(data[1][data[0].indexOf('Txn ID')]).toBe('old1'); expect(data[1][areaCol] || '').toBe('');
+    expect(data[2][areaCol]).toBe('Sai Nagar');
+  });
+
+  it('parties are read once and then served from the 10 minute cache', () => {
+    w.db.transactions.push(tx('c1', { partyId: 'p1', createdAt: at(1), updatedAt: at(1) }));
+    w.ctx.syncLog();
+    expect(w.partiesReads()).toBe(1);
+    w.db.transactions.push(tx('c2', { partyId: 'p2', createdAt: at(400), updatedAt: at(400) }));
+    w.ctx.syncLog();                                   // new rows, same parties: no second read
+    expect(w.partiesReads()).toBe(1);
+    w.advance(11 * 60 * 1000);                         // cache expired
+    w.db.transactions.push(tx('c3', { partyId: 'p1', createdAt: at(900), updatedAt: at(900) }));
+    w.ctx.syncLog();
+    expect(w.partiesReads()).toBe(2);
+    expect(rowsByTxn().c3.Area).toBe('Sai Nagar');
+  });
+
+  it('a run with nothing new never reads parties', () => {
+    w.ctx.syncLog(); w.ctx.syncLog();
+    expect(w.partiesReads()).toBe(0);
+    w.db.transactions.push(tx('d1', { partyId: 'p1', createdAt: at(1), updatedAt: at(1) }));
+    w.ctx.syncLog();
+    expect(w.partiesReads()).toBe(1);
+    w.ctx.syncLog();                                   // nothing fresh now
+    expect(w.partiesReads()).toBe(1);
+  });
+
+  it('a party missing from the cache triggers ONE re-read per run, even across several pages', () => {
+    w.db.transactions.push(tx('e1', { partyId: 'p1', createdAt: at(1), updatedAt: at(1) }));
+    w.ctx.syncLog();
+    expect(w.partiesReads()).toBe(1);
+    w.ctx.CONFIG.BATCH = 2;                            // force several pages in one run
+    w.db.parties.push({ id: 'p3', name: 'New', area: 'Market' });
+    for (let i = 0; i < 5; i++) w.db.transactions.push(tx('f' + i, { partyId: 'p3', createdAt: at(500 + i), updatedAt: at(500 + i) }));
+    w.ctx.syncLog();
+    expect(w.partiesReads()).toBe(2);                  // one extra read for the whole run
+    expect(rowsByTxn().f4.Area).toBe('Market');
   });
 });

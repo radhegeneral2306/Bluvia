@@ -25,7 +25,7 @@ var TABS = { LOG: 'Log', PARTIES: 'Parties', DAILY: 'Daily', STATUS: 'Status' };
 
 var LOG_FIXED = [
   'Synced at', 'Event', 'Txn ID', 'Updated at', 'Date', 'Type', 'Bill no', 'Party', 'Party ID',
-  'Amount / Total (Rs)', 'Discount (Rs)', 'Extra charge (Rs)', 'Deposit (Rs)', 'Mode', 'Reference', 'Note', 'Deleted',
+  'Billed (Rs)', 'Received (Rs)', 'Adjustment (Rs)', 'Deposit change (Rs)', 'Discount (Rs)', 'Extra charge (Rs)', 'Mode', 'Reference', 'Note', 'Deleted',
 ];
 
 var TYPE_LABELS = {
@@ -54,13 +54,16 @@ function baseUrl_() {
 }
 
 function fs_(urlSuffix, method, body) {
-  var res = UrlFetchApp.fetch(baseUrl_() + urlSuffix, {
-    method: method || 'get',
-    contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
-    payload: body ? JSON.stringify(body) : undefined,
-    muteHttpExceptions: true,
-  });
+  var send = function (withProject) {
+    var headers = { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() };
+    if (withProject) headers['X-Goog-User-Project'] = CONFIG.PROJECT_ID; // bills the Firestore API to the Firebase project
+    return UrlFetchApp.fetch(baseUrl_() + urlSuffix, {
+      method: method || 'get', contentType: 'application/json', headers: headers,
+      payload: body ? JSON.stringify(body) : undefined, muteHttpExceptions: true,
+    });
+  };
+  var res = send(true);
+  if (res.getResponseCode() === 403) res = send(false); // not allowed to use the quota project header: try the plain call
   var code = res.getResponseCode();
   var text = res.getContentText();
   if (code >= 300) throw new Error(explainHttp_(code, text));
@@ -150,13 +153,14 @@ function rupees_(paise) {
 function dateFromKey_(key) {
   if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return key || '';
   var p = key.split('-');
-  return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12, 0, 0); // noon: never shifts to another day
 }
 
 function eventOf_(t) {
   if (t.deleted) return 'Deleted';
   var c = Date.parse(t.createdAt || ''), u = Date.parse(t.updatedAt || '');
-  if (!isNaN(c) && !isNaN(u) && Math.abs(u - c) < 2000) return 'Created';
+  if (t.createdAt && t.updatedAt && t.createdAt === t.updatedAt) return 'Created';
+  if (!isNaN(c) && !isNaN(u) && u === c) return 'Created';
   return 'Updated';
 }
 
@@ -181,13 +185,13 @@ function buildLogRow_(t, header, jarTypes, syncedAt) {
   var row = new Array(header.length);
   for (var i = 0; i < row.length; i++) row[i] = '';
   var set = function (name, value) { var idx = header.indexOf(name); if (idx >= 0) row[idx] = value; };
-  var amountCol = '';
-  var depositCol = '';
-  if (t.type === 'bill') amountCol = rupees_(t.total);
-  else if (t.type === 'receipt') amountCol = rupees_(t.amount);
-  else if (t.type === 'adjustment') amountCol = rupees_(t.amount);
-  else if (t.type === 'depositTaken') depositCol = rupees_(t.amount);
-  else if (t.type === 'depositRefund' || t.type === 'depositAdjust') depositCol = t.amount ? -rupees_(t.amount) : 0;
+  var billed = '', received = '', adjustment = '', depositChange = '';
+  if (t.type === 'bill') billed = rupees_(t.total);
+  else if (t.type === 'receipt') received = rupees_(t.amount);
+  else if (t.type === 'adjustment') adjustment = rupees_(t.amount);
+  else if (t.type === 'depositTaken') depositChange = rupees_(t.amount);
+  else if (t.type === 'depositRefund') depositChange = t.amount ? -rupees_(t.amount) : 0;
+  else if (t.type === 'depositAdjust') { depositChange = t.amount ? -rupees_(t.amount) : 0; adjustment = depositChange; } // also reduces what the party owes
   set('Synced at', syncedAt);
   set('Event', eventOf_(t));
   set('Txn ID', t.id);
@@ -197,10 +201,12 @@ function buildLogRow_(t, header, jarTypes, syncedAt) {
   set('Bill no', t.billNo || '');
   set('Party', t.partyName || '');
   set('Party ID', t.partyId || '');
-  set('Amount / Total (Rs)', amountCol);
+  set('Billed (Rs)', billed);
+  set('Received (Rs)', received);
+  set('Adjustment (Rs)', adjustment);
+  set('Deposit change (Rs)', depositChange);
   set('Discount (Rs)', t.type === 'bill' ? rupees_(t.discount || 0) : '');
   set('Extra charge (Rs)', t.type === 'bill' ? rupees_(t.extraCharge || 0) : '');
-  set('Deposit (Rs)', depositCol);
   set('Mode', t.mode || '');
   set('Reference', t.reference || '');
   set('Note', t.note || '');
@@ -226,7 +232,7 @@ function shiftIso_(iso, seconds) {
   return new Date(ms + seconds * 1000).toISOString();
 }
 
-function docKey_(t) { return t.id + '|' + t.updatedAt; }
+function docKey_(t) { return t.id + '|' + String(t.updatedAt).replace(/^.*T/, ''); } // id + time of day (shorter, the cursor window is only minutes)
 
 // ---------------------------------------------------------------------------------------------
 // Sheet helpers
@@ -248,17 +254,26 @@ function ensureLogHeader_(jarTypes) {
   var header = have.slice();
   want.forEach(function (name) { if (header.indexOf(name) < 0) header.push(name); });
   if (header.length !== have.length || have.length === 0) {
+    ensureCapacity_(sheet, 2, header.length);
     sheet.getRange(1, 1, 1, header.length).setValues([header]).setFontWeight('bold').setBackground('#e6f6f9');
     sheet.setFrozenRows(1);
   }
   return header;
 }
 
+/** New tabs have only 1000 rows and 26 columns; grow them before writing. */
+function ensureCapacity_(sheet, needRows, needCols) {
+  var mr = sheet.getMaxRows();
+  if (mr < needRows) sheet.insertRowsAfter(mr, needRows - mr + 1000);
+  var mc = sheet.getMaxColumns();
+  if (mc < needCols) sheet.insertColumnsAfter(mc, needCols - mc + 5);
+}
+
 function writeStatus_(pairs) {
   var sheet = tab_(TABS.STATUS);
   var existing = {};
   var last = sheet.getLastRow();
-  if (last > 0) sheet.getRange(1, 1, last, 2).getValues().forEach(function (r) { if (r[0]) existing[r[0]] = r[1]; });
+  if (last > 1) sheet.getRange(2, 1, last - 1, 2).getValues().forEach(function (r) { if (r[0] && r[0] !== 'Sync health') existing[r[0]] = r[1]; });
   Object.keys(pairs).forEach(function (k) { existing[k] = pairs[k]; });
   var order = [
     'Last log sync', 'Last result', 'Rows added in last run', 'Total log rows', 'Log cursor (updatedAt)',
@@ -270,6 +285,14 @@ function writeStatus_(pairs) {
   sheet.clear();
   sheet.getRange(1, 1, 1, 2).setValues([['Bluvia backup status', '']]).setFontWeight('bold').setBackground('#e6f6f9');
   if (values.length) sheet.getRange(2, 1, values.length, 2).setValues(values);
+  // health line: turns to STALE when the last successful sync is older than 60 minutes (for example if permissions expired)
+  var lastRow = keys.indexOf('Last log sync');
+  if (lastRow >= 0) {
+    var healthRow = values.length + 2;
+    var ref = 'B' + (lastRow + 2);
+    sheet.getRange(healthRow, 1, 1, 2).setValues([['Sync health',
+      '=IF(' + ref + '="","NO SYNC YET",IF((NOW()-DATEVALUE(LEFT(' + ref + ',10))-TIMEVALUE(RIGHT(' + ref + ',8)))*1440>60,"STALE: sync has stopped, check Apps Script triggers","OK"))']]);
+  }
   sheet.setColumnWidth(1, 220); sheet.setColumnWidth(2, 420);
 }
 
@@ -296,6 +319,16 @@ function syncLog() {
     var lastTs = cursor;
     var syncedAt = nowText_();
 
+    // Saves progress. Called after EVERY page so a crash or timeout never makes the next run append the same rows again.
+    var persist = function () {
+      var floor = lastTs ? shiftIso_(lastTs, -CONFIG.OVERLAP_SEC) : '';
+      var keep = processed.filter(function (p) { return !floor || Date.parse(p.ts) >= Date.parse(floor); }).map(function (p) { return p.key; });
+      var json = JSON.stringify(keep);
+      while (json.length > 8000 && keep.length) { keep = keep.slice(Math.ceil(keep.length / 4)); json = JSON.stringify(keep); }
+      props.setProperty('seen', json);
+      if (lastTs) props.setProperty('cursor', lastTs);
+    };
+
     var after = null;
     for (;;) {
       var docs = queryTransactions_(since, CONFIG.BATCH, after);
@@ -303,23 +336,17 @@ function syncLog() {
       if (fresh.length) {
         var rows = fresh.map(function (d) { return buildLogRow_(d, header, jarTypes, syncedAt); });
         var startRow = sheet.getLastRow() + 1;
+        ensureCapacity_(sheet, startRow + rows.length, header.length);
         sheet.getRange(startRow, 1, rows.length, header.length).setValues(rows);
         added += rows.length;
       }
       docs.forEach(function (d) { seen[docKey_(d)] = true; processed.push({ key: docKey_(d), ts: d.updatedAt }); });
       if (docs.length) lastTs = docs[docs.length - 1].updatedAt;
+      persist();
       if (docs.length < CONFIG.BATCH) break;                // caught up
       if (Date.now() - started > CONFIG.MAX_RUN_MS) break;  // continue in the next run
       after = docs[docs.length - 1];
     }
-
-    // keep only recent keys (last overlap window) so the list stays small
-    var floor = lastTs ? shiftIso_(lastTs, -CONFIG.OVERLAP_SEC) : '';
-    var keep = processed.filter(function (p) { return !floor || Date.parse(p.ts) >= Date.parse(floor); }).map(function (p) { return p.key; });
-    var json = JSON.stringify(keep);
-    while (json.length > 8000 && keep.length) { keep = keep.slice(Math.ceil(keep.length / 4)); json = JSON.stringify(keep); }
-    props.setProperty('seen', json);
-    if (lastTs) props.setProperty('cursor', lastTs);
 
     writeStatus_({
       'Last log sync': nowText_(), 'Last result': 'OK', 'Rows added in last run': added,
@@ -367,6 +394,7 @@ function refreshParties() {
     var p = buildPartyRows_(parties, jarTypes);
     var ps = tab_(TABS.PARTIES);
     ps.clear();
+    ensureCapacity_(ps, p.rows.length + 1, p.header.length);
     ps.getRange(1, 1, 1, p.header.length).setValues([p.header]).setFontWeight('bold').setBackground('#e6f6f9');
     if (p.rows.length) ps.getRange(2, 1, p.rows.length, p.header.length).setValues(p.rows);
     ps.setFrozenRows(1);
@@ -375,6 +403,7 @@ function refreshParties() {
     var daily = buildDailyRows_(stats);
     var ds = tab_(TABS.DAILY);
     ds.clear();
+    ensureCapacity_(ds, daily.length + 1, 4);
     ds.getRange(1, 1, 1, 4).setValues([['Date', 'Sales (Rs)', 'Collection (Rs)', 'Bills']]).setFontWeight('bold').setBackground('#e6f6f9');
     if (daily.length) ds.getRange(2, 1, daily.length, 4).setValues(daily);
     ds.setFrozenRows(1);

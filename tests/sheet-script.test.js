@@ -24,15 +24,18 @@ function makeWorld() {
   const sheets = new Map();
   const props = {};
   const newSheet = (name) => {
-    const s = { name, data: [], frozen: 0 };
+    const s = { name, data: [], frozen: 0, maxRows: 1000, maxCols: 26 };
     const rng = (r, c, nr, nc) => ({
       getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => (s.data[r - 1 + i] || [])[c - 1 + j] ?? '')),
-      setValues(vals) { vals.forEach((row, i) => { s.data[r - 1 + i] ||= []; row.forEach((x, j) => { s.data[r - 1 + i][c - 1 + j] = x; }); }); return this; },
+      setValues(vals) {
+        if (r - 1 + vals.length > s.maxRows || c - 1 + (vals[0] || []).length > s.maxCols) throw new Error('Range exceeds sheet grid (Google Sheets limit)');
+        vals.forEach((row, i) => { s.data[r - 1 + i] ||= []; row.forEach((x, j) => { s.data[r - 1 + i][c - 1 + j] = x; }); }); return this; },
       setFontWeight() { return this; }, setBackground() { return this; },
     });
     return {
       _s: s, getName: () => name, getLastRow: () => s.data.length, getLastColumn: () => s.data.reduce((m, r) => Math.max(m, r.length), 0),
       getRange: rng, clear() { s.data = []; return this; }, setFrozenRows(n) { s.frozen = n; }, setColumnWidth() {},
+      getMaxRows: () => s.maxRows, getMaxColumns: () => s.maxCols, insertRowsAfter: (_a, n) => { s.maxRows += n; }, insertColumnsAfter: (_a, n) => { s.maxCols += n; },
     };
   };
   const ss = {
@@ -98,25 +101,28 @@ describe('row building', () => {
   it('bill: total in rupees, jars given per type, returnedInBill not double counted', () => {
     const r = rowFor(tx('b1', { type: 'bill', billNo: '00104', total: 40000, discount: 500, extraCharge: 0, returnedInBill: { j20: 3 },
       lines: [{ jarTypeId: 'j20', qty: 10, jarGiven: true }, { jarTypeId: 'j10', qty: 2, jarGiven: false }, { jarTypeId: null, qty: 4 }] }));
-    expect(r.Type).toBe('Bill'); expect(r['Bill no']).toBe('00104'); expect(r['Amount / Total (Rs)']).toBe(400); expect(r['Discount (Rs)']).toBe(5);
+    expect(r.Type).toBe('Bill'); expect(r['Bill no']).toBe('00104'); expect(r['Billed (Rs)']).toBe(400); expect(r['Discount (Rs)']).toBe(5);
     expect(r['Given: 20L Jar']).toBe(10); expect(r['Given: 10L Jar']).toBe(''); expect(r['Returned: 20L Jar']).toBe('');
     expect(r.Event).toBe('Created');
   });
 
   it('receipt, jar entries, deposits and adjustment', () => {
-    expect(rowFor(tx('r', { amount: 12550 }))['Amount / Total (Rs)']).toBe(125.5);
+    expect(rowFor(tx('r', { amount: 12550 }))['Received (Rs)']).toBe(125.5);
+    expect(rowFor(tx('r', { amount: 12550 }))['Billed (Rs)']).toBe('');
     expect(rowFor(tx('r', { amount: 12550, mode: 'UPI', reference: 'UTR1' })).Mode).toBe('UPI');
     expect(rowFor(tx('j', { type: 'jarReturn', jarTypeId: 'j20', qty: 3, amount: undefined }))['Returned: 20L Jar']).toBe(3);
     expect(rowFor(tx('j', { type: 'jarGiven', jarTypeId: 'j10', qty: 2 }))['Given: 10L Jar']).toBe(2);
-    expect(rowFor(tx('d', { type: 'depositTaken', amount: 100000 }))['Deposit (Rs)']).toBe(1000);
-    expect(rowFor(tx('d', { type: 'depositRefund', amount: 20000 }))['Deposit (Rs)']).toBe(-200);
-    expect(rowFor(tx('d', { type: 'depositAdjust', amount: 10000 }))['Deposit (Rs)']).toBe(-100);
-    expect(rowFor(tx('a', { type: 'adjustment', amount: -5000 }))['Amount / Total (Rs)']).toBe(-50);
+    expect(rowFor(tx('d', { type: 'depositTaken', amount: 100000 }))['Deposit change (Rs)']).toBe(1000);
+    expect(rowFor(tx('d', { type: 'depositRefund', amount: 20000 }))['Deposit change (Rs)']).toBe(-200);
+    const adj = rowFor(tx('d', { type: 'depositAdjust', amount: 10000 }));
+    expect(adj['Deposit change (Rs)']).toBe(-100); expect(adj['Adjustment (Rs)']).toBe(-100); // also lowers what the party owes
+    expect(rowFor(tx('a', { type: 'adjustment', amount: -5000 }))['Adjustment (Rs)']).toBe(-50);
   });
 
   it('event: Created, Updated, Deleted', () => {
     expect(rowFor(tx('e')).Event).toBe('Created');
     expect(rowFor(tx('e', { updatedAt: '2026-11-04T05:00:00.000000Z' })).Event).toBe('Updated');
+    expect(rowFor(tx('e', { updatedAt: '2026-11-04T04:00:01.000000Z' })).Event).toBe('Updated'); // 1 second later is still an edit
     expect(rowFor(tx('e', { deleted: true })).Event).toBe('Deleted');
     expect(rowFor(tx('e', { deleted: true }))['Deleted']).toBe('YES');
   });
@@ -155,7 +161,8 @@ describe('syncLog (fake Firestore + fake Sheet)', () => {
     w.ctx.syncLog();
     const rows = w.log().slice(1);
     expect(rows.map((r) => r[1])).toEqual(['Created', 'Updated', 'Deleted']);
-    expect(rows[0][9]).toBe(300); expect(rows[1][9]).toBe(500);
+    const rc = w.log()[0].indexOf('Received (Rs)');
+    expect(rows[0][rc]).toBe(300); expect(rows[1][rc]).toBe(500);
   });
 
   it('a late-arriving document stamped slightly before the cursor is still picked up (5 minute overlap)', () => {
@@ -178,6 +185,35 @@ describe('syncLog (fake Firestore + fake Sheet)', () => {
     expect(header).toContain('Given: 10L Jar');
     expect(r1[header.indexOf('Given: 20L Jar')]).toBe(2);
     expect(r2[header.indexOf('Given: 10L Jar')]).toBe(7);
+  });
+
+  it('writes past row 1000 (new tabs only have 1000 rows) and past 26 columns', () => {
+    w.ctx.CONFIG.BATCH = 300;
+    for (let i = 1; i <= 1200; i++) w.db.transactions.push(tx('m' + String(i).padStart(5, '0'), { createdAt: at(i), updatedAt: at(i) }));
+    w.ctx.syncLog();
+    expect(w.log().length).toBe(1201);
+    for (let k = 0; k < 8; k++) w.db.jarTypes.push({ id: 'x' + k, name: 'Type ' + k }); // 17 fixed + 2 x 9 > 26 columns
+    w.db.transactions.push(tx('zz', { createdAt: at(5000), updatedAt: at(5000) }));
+    w.ctx.syncLog();
+    expect(w.log().length).toBe(1202);
+  });
+
+  it('a run that dies half way never appends the same rows twice', () => {
+    for (let i = 1; i <= 6; i++) w.db.transactions.push(tx('k' + i, { createdAt: at(i), updatedAt: at(i) }));
+    const real = w.ctx.UrlFetchApp.fetch; let queries = 0;
+    w.ctx.UrlFetchApp.fetch = (url, opts) => { if (url.includes(':runQuery') && ++queries === 3) throw new Error('Service unavailable'); return real(url, opts); };
+    expect(() => w.ctx.syncLog()).toThrow();
+    expect(ids()).toEqual(['k1', 'k2', 'k3', 'k4']);   // two pages were saved
+    w.ctx.UrlFetchApp.fetch = real;
+    w.ctx.syncLog();
+    expect(ids()).toEqual(['k1', 'k2', 'k3', 'k4', 'k5', 'k6']);
+  });
+
+  it('retries without the quota-project header when Firestore answers 403 to it', () => {
+    const real = w.ctx.UrlFetchApp.fetch; const seenHeaders = [];
+    w.ctx.UrlFetchApp.fetch = (url, opts) => { seenHeaders.push(!!opts.headers['X-Goog-User-Project']); return seenHeaders.length === 1 ? { getResponseCode: () => 403, getContentText: () => 'x' } : real(url, opts); };
+    w.ctx.listCollection_('jarTypes');
+    expect(seenHeaders).toEqual([true, false]);
   });
 
   it('records a FAILED status and rethrows when Firestore refuses', () => {

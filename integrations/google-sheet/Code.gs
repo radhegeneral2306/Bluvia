@@ -382,17 +382,30 @@ function syncLog() {
 // ---------------------------------------------------------------------------------------------
 // Sync: Parties + Daily + Status totals (daily, or on demand)
 // ---------------------------------------------------------------------------------------------
+/** [Latitude, Longitude, Location accuracy (m), Maps link] for one party; four empty strings when it has no valid location. */
+function locationCells_(p) {
+  var lat = p.lat, lng = p.lng;
+  var ok = typeof lat === 'number' && typeof lng === 'number' && isFinite(lat) && isFinite(lng) &&
+    lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 && !(lat === 0 && lng === 0);
+  if (!ok) return ['', '', '', ''];
+  var acc = (typeof p.locAccuracy === 'number' && isFinite(p.locAccuracy)) ? Math.round(p.locAccuracy) : '';
+  var ll = lat.toFixed(6) + ',' + lng.toFixed(6); // toFixed always uses a dot, whatever the sheet locale
+  return [lat, lng, acc, '=HYPERLINK("https://www.google.com/maps/search/?api=1&query=' + ll + '","Open in Maps")'];
+}
+
 function buildPartyRows_(parties, jarTypes) {
   var header = ['Party', 'Phone', 'Address', 'Area', 'Active', 'Outstanding (Rs)', 'Deposit held (Rs)', 'Jars with party']
     .concat(jarTypes.map(function (j) { return 'Jars: ' + j.name; }))
-    .concat(['Opening balance (Rs)', 'Last entry', 'Party ID']);
+    .concat(['Opening balance (Rs)', 'Last entry', 'Latitude', 'Longitude', 'Location accuracy (m)', 'Maps link', 'Party ID']);
   var sorted = parties.slice().sort(function (a, b) { return String(a.name || '').toLowerCase() < String(b.name || '').toLowerCase() ? -1 : 1; });
   var rows = sorted.map(function (p) {
     var jb = p.jarBalance || {};
     var text = jarTypes.filter(function (j) { return jb[j.id]; }).map(function (j) { return jb[j.id] + ' x ' + j.name; }).join(', ');
     return [p.name || '', p.phone || '', p.address || '', p.area || '', p.active === false ? 'No' : 'Yes', rupees_(p.outstanding || 0), rupees_(p.depositBalance || 0), text]
       .concat(jarTypes.map(function (j) { return jb[j.id] || 0; }))
-      .concat([rupees_(p.openingBalance || 0), p.lastTxnAt || '', p.id]);
+      .concat([rupees_(p.openingBalance || 0), p.lastTxnAt || ''])
+      .concat(locationCells_(p))
+      .concat([p.id]);
   });
   return { header: header, rows: rows };
 }

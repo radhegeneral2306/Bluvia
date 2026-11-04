@@ -48,6 +48,10 @@ service cloud.firestore {
         && money('openingBalance') && money('openingDeposit')
         && money('outstanding') && money('depositBalance')
         && (!('area' in d()) || (d().area is string && d().area.size() <= 60))
+        && (!('lat' in d()) || (d().lat is number && d().lat >= -90 && d().lat <= 90))
+        && (!('lng' in d()) || (d().lng is number && d().lng >= -180 && d().lng <= 180))
+        && (!('locAccuracy' in d()) || d().locAccuracy == null || (d().locAccuracy is number && d().locAccuracy >= 0 && d().locAccuracy < 100000))
+        && (!('locSource' in d()) || (d().locSource is string && d().locSource.size() <= 10))
         && noteOk();
       allow delete: if false;
     }

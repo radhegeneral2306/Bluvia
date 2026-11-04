@@ -208,3 +208,11 @@ App mein ab party ko **Area** diya ja sakta hai. Sheet mein bhi ye dikhega, leki
 3. **Log tab:** `Area` naya column hai jo sheet ke **dahine (right) side** mein jud jaata hai. **Purani rows mein Area khali rahega** (unhe badla nahi jaata, kyunki Log sirf aage badhta hai). Nayi rows mein party ka area likha aayega. Entry mein area store nahi hota, isliye ye us waqt ka area hai jab entry sheet mein likhi gayi.
 4. Area ki jaankari ke liye script har 10 minute mein parties ki list dobara nahi padhti. Sirf tab padhti hai jab koi nayi entry likhni ho aur pichhle 10 minute mein list padhi na gayi ho, to free limit par asar bahut kam hai.
 5. Party ka area badalne par Log ki purani rows nahi badalti. Naya area agli nayi entry se dikhega.
+
+## 10. Naya: Location columns (Map ke baad)
+
+App mein ab party ki location (lat/lng) save hoti hai. Sheet mein bhi dikhane ke liye script ka naya version chahiye.
+
+1. **Location columns naye hain; Code.gs naya version paste karna padega:** Apps Script mein purana `Code.gs` ka poora text hata kar naya paste karo, **Save** dabao, phir menu se **Refresh parties and daily summary** dabao. `appsscript.json` badalna nahi hai.
+2. **Parties tab:** `Last entry` ke baad 4 naye columns aate hain: `Latitude`, `Longitude`, `Location accuracy (m)`, `Maps link`. `Party ID` sabse aakhir mein rehta hai. Jis party ki location nahi hai, uske chaaron khali rahte hain.
+3. **Maps link par click karne se Google Maps khulta hai** (us party ki jagah par).

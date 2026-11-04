@@ -1,8 +1,11 @@
 import { Link } from 'react-router-dom';
-import { Tag, Database, ClockCounterClockwise, Calculator, Gear, CaretRight } from '@phosphor-icons/react';
+import { MapTrifold, Tag, Database, ClockCounterClockwise, Calculator, Gear, CaretRight } from '@phosphor-icons/react';
 import { Page } from '../components/ui.jsx';
 
 const groups = [
+  ['Parties', [
+    ['/map', MapTrifold, 'Map', 'Parties ko map par dekho, navigate karo'],
+  ]],
   ['Data', [
     ['/masters', Tag, 'Jar Types & Items', 'Jar types, items, rates, deposits'],
     ['/backup', Database, 'Backup & Restore', 'JSON / Excel backup, restore'],

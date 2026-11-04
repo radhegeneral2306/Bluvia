@@ -1,5 +1,5 @@
 import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
-import { House, UsersThree, Receipt, ChartBar, List, Plus, Drop, Wallet, Tag, Database, ClockCounterClockwise, Gear } from '@phosphor-icons/react';
+import { House, MapTrifold, UsersThree, Receipt, ChartBar, List, Plus, Drop, Wallet, Tag, Database, ClockCounterClockwise, Gear } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 
 const main = [
@@ -10,7 +10,7 @@ const main = [
   ['/more', List, 'More'],
 ];
 const groups = [
-  ['Daily', [['/', House, 'Dashboard', true], ['/bill/new', Plus, 'New bill'], ['/parties', UsersThree, 'Parties'], ['/bills', Receipt, 'Bills and receipts']]],
+  ['Daily', [['/', House, 'Dashboard', true], ['/bill/new', Plus, 'New bill'], ['/parties', UsersThree, 'Parties'], ['/map', MapTrifold, 'Map'], ['/bills', Receipt, 'Bills and receipts']]],
   ['Reports', [['/reports/jars', Drop, 'Jar report'], ['/reports/outstanding', Wallet, 'Outstanding']]],
   ['Manage', [['/masters', Tag, 'Jar types and items'], ['/backup', Database, 'Backup and restore'], ['/deleted', ClockCounterClockwise, 'Deleted entries'], ['/settings', Gear, 'Settings']]],
 ];

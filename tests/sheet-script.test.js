@@ -320,3 +320,52 @@ describe('Area column in the Log', () => {
     expect(rowsByTxn().f4.Area).toBe('Market');
   });
 });
+
+describe('Location columns in the Parties tab', () => {
+  const run = (parties) => {
+    const w = makeWorld();
+    w.db.jarTypes.push({ id: 'j20', name: '20L Jar' });
+    w.db.parties.push(...parties);
+    w.ctx.refreshParties();
+    const data = w.sheets.get('Parties')._s.data;
+    const header = data[0];
+    const byName = Object.fromEntries(data.slice(1).map((r) => [r[0], Object.fromEntries(header.map((h, i) => [h, r[i]]))]));
+    return { header, byName };
+  };
+
+  it('puts Latitude, Longitude, Location accuracy and Maps link right before Party ID', () => {
+    const { header } = run([{ id: 'p1', name: 'A' }]);
+    expect(header.slice(-5)).toEqual(['Latitude', 'Longitude', 'Location accuracy (m)', 'Maps link', 'Party ID']);
+    expect(header.slice(0, 5)).toEqual(['Party', 'Phone', 'Address', 'Area', 'Active']); // nothing before it moved
+  });
+
+  it('writes numbers (6 decimals kept) and an Open in Maps HYPERLINK formula for a party with a location', () => {
+    const { byName } = run([{ id: 'p1', name: 'Ram', lat: 21.251432, lng: 81.629611, locAccuracy: 18.4, locSource: 'gps' }]);
+    const r = byName.Ram;
+    expect(r.Latitude).toBe(21.251432); expect(r.Longitude).toBe(81.629611); expect(r['Location accuracy (m)']).toBe(18);
+    expect(r['Maps link']).toBe('=HYPERLINK("https://www.google.com/maps/search/?api=1&query=21.251432,81.629611","Open in Maps")');
+    expect(r['Maps link'].startsWith('=')).toBe(true); // a string starting with = is written as a formula by setValues
+  });
+
+  it('keeps trailing zeros in the link and leaves accuracy blank when it is unknown', () => {
+    const { byName } = run([{ id: 'p1', name: 'Ram', lat: 21.25, lng: 81.5, locAccuracy: null }]);
+    expect(byName.Ram['Maps link']).toContain('query=21.250000,81.500000'); expect(byName.Ram['Location accuracy (m)']).toBe('');
+  });
+
+  it('all four cells are empty for a party without a location', () => {
+    const { byName } = run([{ id: 'p1', name: 'Plain' }]);
+    expect([byName.Plain.Latitude, byName.Plain.Longitude, byName.Plain['Location accuracy (m)'], byName.Plain['Maps link']]).toEqual(['', '', '', '']);
+  });
+
+  it('invalid values (out of range, text, 0/0, null) are treated as no location and never break the refresh', () => {
+    const { byName } = run([
+      { id: 'a', name: 'BadLat', lat: 95, lng: 81 }, { id: 'b', name: 'BadLng', lat: 21, lng: -181 }, { id: 'c', name: 'Text', lat: '21.2', lng: '81.6' },
+      { id: 'd', name: 'Zero', lat: 0, lng: 0 }, { id: 'e', name: 'Nulls', lat: null, lng: null }, { id: 'f', name: 'OnlyLat', lat: 21.2 },
+      { id: 'g', name: 'Good', lat: 21.2, lng: 81.6, locAccuracy: 'abc' },
+    ]);
+    for (const n of ['BadLat', 'BadLng', 'Text', 'Zero', 'Nulls', 'OnlyLat']) {
+      expect([n, byName[n].Latitude, byName[n].Longitude, byName[n]['Maps link']]).toEqual([n, '', '', '']);
+    }
+    expect(byName.Good.Latitude).toBe(21.2); expect(byName.Good['Location accuracy (m)']).toBe('');
+  });
+});

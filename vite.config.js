@@ -28,6 +28,18 @@ export default defineConfig({
         navigateFallback: '/index.html',
         globPatterns: ['**/*.{js,css,html,png,svg,ico,woff2}'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        // Map tiles: keep them on the phone so the map is fast and the free OpenStreetMap servers see fewer requests
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/(?:[abc]\.)?tile\.openstreetmap\.org\/.*/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'osm-tiles',
+              expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
     }),
   ],

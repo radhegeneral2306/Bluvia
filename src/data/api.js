@@ -113,6 +113,13 @@ export async function updateParty(id, oldP, data) {
   return commitSafe(b.commit());
 }
 
+/** Saves a party's location. source: 'gps' | 'link'. Only writes location fields (no balances). */
+export async function saveLocation(partyId, { lat, lng, accuracy = null, source = 'gps' }) {
+  const data = { lat, lng, locSource: source, locUpdatedAt: serverTimestamp() };
+  data.locAccuracy = accuracy === null || accuracy === undefined ? null : Math.round(accuracy);
+  return commitSafe(setDoc(doc(db, 'parties', partyId), data, { merge: true }));
+}
+
 // ---------- transactions ----------
 const base = (t) => ({ deleted: false, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ...t, date: tsFromKey(t.dateKey) });
 

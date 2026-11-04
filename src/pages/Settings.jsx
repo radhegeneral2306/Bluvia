@@ -19,21 +19,38 @@ export default function Settings() {
   const [newMode, setNewMode] = useState('');
   const [, tick] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [nameErr, setNameErr] = useState('');
+  const [nextEdited, setNextEdited] = useState(false); // did the user type in 'Next bill number'?
   const [theme, setThemeState] = useState(getTheme());
 
   useEffect(() => { if (settings && !f) setF({ ...settings, paymentModes: [...(settings.paymentModes || [])] }); }, [settings, f]);
   useEffect(() => onInstallChange(() => tick((n) => n + 1)), []);
+  // keep 'Next bill number' live (another device may issue bills) until the user edits it
+  useEffect(() => {
+    if (!settings || nextEdited) return;
+    setF((p) => (p && p.nextBillNo !== settings.nextBillNo ? { ...p, nextBillNo: settings.nextBillNo } : p));
+  }, [settings, nextEdited]);
   if (!f) return null;
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   async function save() {
+    if (!(f.businessName || '').trim()) {
+      setNameErr('Business name khali nahi ho sakta.');
+      toast('Business name likho', 'err');
+      return;
+    }
+    setNameErr('');
     setBusy(true);
     try {
-      await saveSettings({
+      const patch = {
         businessName: f.businessName.trim(), managerName: f.managerName || '', invoiceFor: f.invoiceFor || '', showDuesOnPdf: f.showDuesOnPdf !== false, billNoPad: Math.max(0, parseInt(f.billNoPad, 10) || 0), address: f.address || '', phone: f.phone || '', billPrefix: f.billPrefix || '',
         footerNote: f.footerNote || '', currency: f.currency || '₹', countryCode: (f.countryCode || '').replace(/\D/g, ''), paymentModes: f.paymentModes,
-        nextBillNo: Math.max(1, parseInt(f.nextBillNo, 10) || 1),
-      });
+      };
+      // Only send the bill counter when the user changed it. Otherwise a stale form would roll the counter back
+      // and the next bill would repeat an invoice number issued from another device.
+      if (nextEdited) patch.nextBillNo = Math.max(1, parseInt(f.nextBillNo, 10) || 1);
+      await saveSettings(patch);
+      setNextEdited(false);
       toast('Settings save ho gayi');
     } catch (e) { toast(e.message, 'err'); } finally { setBusy(false); }
   }
@@ -53,7 +70,10 @@ export default function Settings() {
       <section className="space-y-2">
         <H>Business</H>
         <div className="card p-4 space-y-4">
-          <Field label="Business name"><input className="input" value={f.businessName || ''} onChange={set('businessName')} /></Field>
+          <Field label="Business name">
+            <input className="input" value={f.businessName || ''} aria-invalid={!!nameErr} onChange={(e) => { setNameErr(''); set('businessName')(e); }} />
+            {nameErr && <span className="block text-xs text-red-600 mt-1.5" role="alert">{nameErr}</span>}
+          </Field>
           <Field label="Manager / contact name" hint="Invoice ke top par 'Manager: …' line mein aayega"><input className="input" value={f.managerName || ''} onChange={set('managerName')} /></Field>
           <Field label="Address" hint="Har line alag likho, invoice mein waisi hi dikhegi"><textarea className="input !py-2.5" rows={2} value={f.address || ''} onChange={set('address')} /></Field>
           <Field label="Phone"><input className="input num" inputMode="tel" value={f.phone || ''} onChange={set('phone')} /></Field>
@@ -69,7 +89,7 @@ export default function Settings() {
         <div className="card p-4 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Bill prefix"><input className="input" value={f.billPrefix || ''} onChange={set('billPrefix')} /></Field>
-            <Field label="Next bill number" hint="Sirf tab badlo jab zaroori ho"><input className="input num" inputMode="numeric" value={f.nextBillNo ?? 1} onChange={set('nextBillNo')} /></Field>
+            <Field label="Next bill number" hint="Sirf tab badlo jab zaroori ho"><input className="input num" inputMode="numeric" value={f.nextBillNo ?? 1} onChange={(e) => { setNextEdited(true); set('nextBillNo')(e); }} /></Field>
           </div>
           <Field label="Bill number digits" hint="5 = 00104 jaisa. 0 = koi padding nahi"><input className="input num" inputMode="numeric" value={f.billNoPad ?? 0} onChange={set('billNoPad')} /></Field>
           <Field label="Invoice 'FOR' text (default)" hint="Har bill par badal sakte ho"><input className="input" value={f.invoiceFor || ''} onChange={set('invoiceFor')} /></Field>

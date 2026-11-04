@@ -7,6 +7,7 @@ import { Page, Tabs, Spinner, Empty, useToast } from '../components/ui.jsx';
 import TxnRow, { EditLink } from '../components/TxnRow.jsx';
 import ShareBillModal from '../components/ShareBillModal.jsx';
 import { describeTxn } from '../lib/describe.js';
+import { askLinkedDelete } from '../lib/linkedDelete.js';
 
 export default function Bills() {
   const { jarName, money } = useStore();
@@ -14,6 +15,9 @@ export default function Bills() {
   const [type, setType] = useState('bill');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [dFrom, setDFrom] = useState('');
+  const [dTo, setDTo] = useState('');
+  const rangeErr = dFrom && dTo && dFrom > dTo ? 'From date, To date se pehle honi chahiye.' : '';
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
@@ -31,7 +35,13 @@ export default function Bills() {
 
   async function del(t) {
     if (!window.confirm('Delete karna hai?')) return;
-    await softDeleteTxn(t); setItems((p) => p.filter((x) => x.id !== t.id)); toast('Delete ho gaya');
+    try {
+      const { withLinked, linked } = await askLinkedDelete(t);
+      await softDeleteTxn(t, { withLinked });
+      const gone = new Set([t.id, ...linked.map((l) => l.id)]);
+      setItems((p) => p.filter((x) => !gone.has(x.id)));
+      toast(withLinked ? 'Bill aur uski linked entries delete ho gayi' : 'Delete ho gaya');
+    } catch (e) { toast(e.message, 'err'); }
   }
   const rows = items.map((t) => ({ t, d: describeTxn(t, { jarName, money }) }));
   const actions = (row) => (
@@ -43,13 +53,17 @@ export default function Bills() {
   );
 
   return (
-    <Page title="Bills & Receipts" actions={<Link to="/bill/new" className="btn btn-primary btn-sm"><Plus size={18} weight="bold" />Bill</Link>}>
+    <Page title="Bills aur Receipts" actions={<Link to="/bill/new" className="btn btn-primary btn-sm"><Plus size={18} weight="bold" />Bill</Link>}>
       <Tabs tabs={[['bill', 'Bills'], ['receipt', 'Receipts']]} value={type} onChange={setType} />
-      <div className="grid grid-cols-2 gap-3">
-        <label><span className="label">From</span><input type="date" className="input num" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
-        <label><span className="label">To</span><input type="date" className="input num" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+      <div className="grid grid-cols-1 min-[340px]:grid-cols-2 gap-3">
+        <label className="min-w-0"><span className="label">From</span><input type="date" className="input num" value={dFrom} onChange={(e) => setDFrom(e.target.value)} aria-invalid={!!rangeErr} /></label>
+        <label className="min-w-0"><span className="label">To</span><input type="date" className="input num" value={dTo} onChange={(e) => setDTo(e.target.value)} aria-invalid={!!rangeErr} /></label>
       </div>
-      {(from || to) && <button className="btn btn-sm" onClick={() => { setFrom(''); setTo(''); }}><FunnelSimple size={18} />Filter hatao</button>}
+      {rangeErr && <p className="text-sm text-red-600" role="alert">{rangeErr}</p>}
+      <div className="flex flex-wrap gap-2">
+        <button className="btn btn-sm btn-primary" disabled={!!rangeErr || (dFrom === from && dTo === to)} onClick={() => { setFrom(dFrom); setTo(dTo); }}><FunnelSimple size={18} />Filter lagao</button>
+        {(from || to || dFrom || dTo) && <button className="btn btn-sm" onClick={() => { setFrom(''); setTo(''); setDFrom(''); setDTo(''); }}>Filter hatao</button>}
+      </div>
       {loading && !items.length ? <Spinner /> : !rows.length ? <Empty icon={Receipt} title={type === 'bill' ? 'Koi bill nahi' : 'Koi receipt nahi'} action={type === 'bill' ? <Link to="/bill/new" className="btn btn-primary btn-sm mt-2"><Plus size={18} weight="bold" />Naya bill</Link> : null}>Filter badal kar dekho ya nayi entry banao.</Empty> : (
         <div className="space-y-2">{rows.map((r) => <TxnRow key={r.t.id} row={r} money={money} showParty actions={actions} />)}</div>
       )}

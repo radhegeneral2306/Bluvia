@@ -4,6 +4,7 @@ import { useStore } from '../data/store.jsx';
 import { createEntry, updateTxn, getOne } from '../data/api.js';
 import { Page, Field, MoneyInput, QtyInput, StickyBar, Tabs, Spinner, useToast } from '../components/ui.jsx';
 import PartyPicker from '../components/PartyPicker.jsx';
+import { dueView } from '../lib/advance.js';
 import { todayKey } from '../lib/dates.js';
 import { planChange, negativeJarWarnings } from '../lib/ledger.js';
 import { depositPerJar } from '../lib/rates.js';
@@ -24,7 +25,14 @@ function bestJar(party, jarTypes, fallback) {
     const n = (party?.jarBalance || {})[j.id] || 0;
     if (j.active !== false && n > 0 && (!best || n > best.n)) best = { id: j.id, n };
   }
-  return best ? best.id : fallback;
+  if (best) return best.id;
+  // nothing is held: pick the type that is most negative (the one that needs fixing)
+  let neg = null;
+  for (const j of jarTypes) {
+    const n = (party?.jarBalance || {})[j.id] || 0;
+    if (j.active !== false && n < 0 && (!neg || n < neg.n)) neg = { id: j.id, n };
+  }
+  return neg ? neg.id : fallback;
 }
 
 export default function EntryForm() {
@@ -115,7 +123,7 @@ export default function EntryForm() {
         <Field label="Party"><PartyPicker value={f.partyId} onChange={(v) => upd(group === 'jar' && !old ? { partyId: v, jarTypeId: bestJar(partyMap[v], jarTypes, f.jarTypeId) } : { partyId: v })} /></Field>
         {party && (
           <dl className="grid grid-cols-2 gap-4 text-sm px-1">
-            <div><dt className="text-slate-500">Baaki</dt><dd className={`num text-base font-semibold ${(party.outstanding || 0) > 0 ? 'text-red-600' : 'text-slate-800'}`}>{money(party.outstanding || 0)}</dd></div>
+            <div className="min-w-0"><dt className="text-slate-500">{dueView(party.outstanding).label}</dt><dd className={`num text-base font-semibold break-words ${dueView(party.outstanding).tone}`}>{money(dueView(party.outstanding).amount)}</dd></div>
             <div><dt className="text-slate-500">Deposit</dt><dd className="num text-base font-semibold text-slate-800">{money(party.depositBalance || 0)}</dd></div>
           </dl>
         )}

@@ -20,22 +20,22 @@ export default function TxnRow({ row, money, showParty, actions }) {
   const amt = d.outstanding;
   const [Icon, tone] = ICONS[t.type] || ICONS.adjustment;
   return (
-    <div className="card p-3">
-      <div className="flex items-start gap-3">
+    <div className="card p-3 min-w-0">
+      <div className="flex items-start gap-3 min-w-0">
         <span className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center ${tone}`}><Icon size={20} /></span>
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap"><span className="font-semibold">{d.title}</span><span className="text-xs text-slate-500 num">{d.dateText}</span></div>
           {showParty && <div className="text-sm font-medium text-slate-700 truncate">{t.partyName}</div>}
           {d.detail && <div className="text-sm text-slate-600 break-words">{d.detail}</div>}
-          {d.note && <div className="text-xs text-slate-500 italic">{d.note}</div>}
+          {d.note && <div className="text-xs text-slate-500 italic break-words">{d.note}</div>}
         </div>
-        <div className="text-right shrink-0">
+        <div className="text-right shrink-0 max-w-[40%] break-words">
           {amt !== 0 && <div className={`font-semibold num ${amt > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{amt > 0 ? '+' : '−'}{money(Math.abs(amt))}</div>}
           {amt === 0 && t.amount > 0 && <div className="font-semibold num text-slate-700">{money(t.amount)}</div>}
           {row.balance !== undefined && <div className="text-xs text-slate-500 num">Bal {money(row.balance)}</div>}
         </div>
       </div>
-      {actions && <div className="flex gap-2 mt-2 justify-end">{actions(row)}</div>}
+      {actions && <div className="flex flex-wrap gap-2 mt-2 justify-end">{actions(row)}</div>}
     </div>
   );
 }

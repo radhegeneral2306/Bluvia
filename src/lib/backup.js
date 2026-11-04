@@ -170,3 +170,17 @@ export async function restoreAll(obj, onProgress = () => {}) {
 export async function markBackupDone() {
   await setDoc(doc(db, 'settings', 'main'), { lastBackupAt: Timestamp.now() }, { merge: true });
 }
+
+const HEAVY_KEY = 'bluvia_heavy_run_at';
+/** Backup / recalculate read the whole database. Asks for confirmation if one ran in the last 12 hours. */
+export function confirmHeavyRun(what = 'Yeh kaam') {
+  let last = 0;
+  try { last = Number(localStorage.getItem(HEAVY_KEY)) || 0; } catch { /* ignore */ }
+  const hours = (Date.now() - last) / 3600000;
+  if (last && hours < 12) {
+    const ok = window.confirm(`${what} pichhle ${Math.max(1, Math.round(hours))} ghante mein ek baar chala tha. Dobara chalane se free limit ki bahut saari reads lagengi. Phir bhi chalana hai?`);
+    if (!ok) return false;
+  }
+  try { localStorage.setItem(HEAVY_KEY, String(Date.now())); } catch { /* ignore */ }
+  return true;
+}

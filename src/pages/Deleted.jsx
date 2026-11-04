@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowCounterClockwise, ClockCounterClockwise } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
-import { listTxns, restoreTxn } from '../data/api.js';
+import { listTxns, restoreTxn, findDeletedLinked } from '../data/api.js';
 import { Page, Spinner, Empty, useToast } from '../components/ui.jsx';
 import TxnRow from '../components/TxnRow.jsx';
 import { describeTxn } from '../lib/describe.js';
@@ -24,7 +24,18 @@ export default function Deleted() {
   useEffect(() => { load(false); /* eslint-disable-next-line */ }, []);
 
   async function restore(t) {
-    await restoreTxn(t); setItems((p) => p.filter((x) => x.id !== t.id)); toast('Restore ho gaya');
+    try {
+      let withLinked = false;
+      let linked = [];
+      if (t.type === 'bill') {
+        linked = await findDeletedLinked(t.id);
+        if (linked.length) withLinked = window.confirm(`Is bill ke saath bani ${linked.length} deposit/jar return entries bhi wapas lagani hain?`);
+      }
+      await restoreTxn(t, { withLinked });
+      const gone = new Set([t.id, ...(withLinked ? linked.map((l) => l.id) : [])]);
+      setItems((p) => p.filter((x) => !gone.has(x.id)));
+      toast(withLinked ? 'Bill aur uski entries restore ho gayi' : 'Restore ho gaya');
+    } catch (e) { toast(e.message, 'err'); }
   }
   // describeTxn shows effect of non-deleted version
   const rows = items.map((t) => ({ t, d: describeTxn({ ...t, deleted: false }, { jarName, money }) }));

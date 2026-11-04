@@ -376,3 +376,108 @@ describe('describeTxn edge cases', () => {
   it('missing dateKey gives empty date text, not "undefined"', () => expect(d({ type: 'receipt', amount: 100 }).dateText).toBe(''));
   it('jar entry for a deleted jar type shows the fallback name', () => expect(d({ type: 'jarReturn', jarTypeId: 'gone', qty: 2, dateKey: '2026-10-10' }).detail).toBe('2 × gone'));
 });
+
+// ---------------------------------------------------------------------------------------------
+// UPI payment QR on the bill PDF and in the share texts
+// ---------------------------------------------------------------------------------------------
+describe('UPI payment QR', () => {
+  const upiSettings = { ...base, upiId: 'shop@okaxis', upiName: 'Bluvia Water', upiRemark: 'Bill {billNo}', upiQrAmount: 'bill' };
+  const images = (doc) => (Buffer.from(doc.output('arraybuffer')).toString('latin1').match(/\/Subtype\s*\/Image/g) || []).length;
+
+  it('a configured UPI id adds exactly one picture (the QR) to the invoice', async () => {
+    const without = await render('upi-00-none', { settings: base });
+    const withQr = await render('upi-01-invoice', { settings: upiSettings });
+    expect(images(withQr.doc)).toBe(images(without.doc) + 1);
+    expect(withQr.pages).toBe(1);
+    if (hasPdftotext) {
+      expect(withQr.text).toContain('Scan karke UPI se pay karo');
+      expect(withQr.text).toContain('UPI: shop@okaxis');
+      expect(withQr.text).toContain('Amount: Rs. 400');
+      expect(withQr.text).toContain('Amount payment app mein badal sakte ho');
+    }
+  });
+
+  it('an empty, missing or invalid UPI id adds no picture and no QR text', async () => {
+    const baseline = images((await render('upi-02a', { settings: base })).doc);
+    for (const id of ['', undefined, 'not a upi id', 'shop@', '@bank']) {
+      const r = await render('upi-02b', { settings: { ...base, upiId: id } });
+      expect(images(r.doc)).toBe(baseline);
+      if (hasPdftotext) expect(r.text).not.toContain('Scan karke UPI');
+    }
+  });
+
+  it('the invoice without UPI is unchanged by the feature (same text as before)', async () => {
+    const a = await render('upi-03a', { settings: base });
+    const b = await render('upi-03b', { settings: { ...base, upiId: '' } });
+    if (hasPdftotext) expect(a.text).toBe(b.text);
+    expect(images(a.doc)).toBe(images(b.doc));
+  });
+
+  it("QR amount follows the setting: this bill's total or the total due, with a due fallback", async () => {
+    const bill = mkBill({ total: 20000, subTotal: 20000, prevOutstanding: 70000, newOutstanding: 90000 });
+    const bi = await render('upi-04a', { settings: { ...upiSettings, upiQrAmount: 'bill' }, bill });
+    const du = await render('upi-04b', { settings: { ...upiSettings, upiQrAmount: 'due' }, bill });
+    if (hasPdftotext) { expect(bi.text).toContain('Amount: Rs. 200'); expect(du.text).toContain('Amount: Rs. 900'); }
+    const settled = await render('upi-04c', { settings: { ...upiSettings, upiQrAmount: 'due' }, bill: mkBill({ total: 20000, subTotal: 20000, prevOutstanding: -90000, newOutstanding: -70000 }) });
+    if (hasPdftotext) expect(settled.text).toContain('Amount: Rs. 200');   // nothing due: falls back to the bill
+  });
+
+  it('a zero bill still prints the QR but asks for no fixed amount', async () => {
+    const r = await render('upi-05', { settings: upiSettings, bill: mkBill({ total: 0, subTotal: 0, lines: [line({ qty: 0, amount: 0 })], newOutstanding: 0 }) });
+    if (hasPdftotext) { expect(r.text).toContain('Scan karke UPI'); expect(r.text).not.toMatch(/Amount: Rs\./); }
+  });
+
+  it('a long bill with many lines and dues lines never overlaps the QR block', async () => {
+    const lines = Array.from({ length: 12 }, (_, i) => line({ itemName: `Item number ${i + 1}`, jarTypeId: i % 2 ? 'c' : 'n' }));
+    const r = await render('upi-06', { settings: { ...upiSettings, address: 'A\nB\nC\nD\nE\nF' }, bill: mkBill({ lines, note: 'Please deliver before 9 AM. '.repeat(3), prevOutstanding: 12300, newOutstanding: 52300, jarBalanceAfter: { n: 5, c: 2 } }) });
+    if (hasPdftotext) { expect(overlaps(r.file)).toBe(0); expect(r.text).toContain('Scan karke UPI'); }
+  });
+
+  it('thermal receipt gets a 36 mm QR and the page grows to hold it', async () => {
+    const plain = await render('upi-07a', { layout: 'thermal', settings: base });
+    const withQr = await render('upi-07b', { layout: 'thermal', settings: upiSettings });
+    expect(images(withQr.doc)).toBe(images(plain.doc) + 1);
+    if (hasPdftotext) {
+      expect(withQr.text).toContain('UPI: shop@okaxis'); expect(withQr.text).toContain('Scan karke UPI se pay karo');
+      expect(pageH(withQr.file)).toBeGreaterThan(pageH(plain.file) + 38);   // QR is 36 mm plus its captions
+      expect(overlaps(withQr.file)).toBe(0);
+    }
+  });
+
+  it('a QR that cannot be made never breaks the bill (the PDF is still built, without it)', async () => {
+    vi.resetModules();
+    vi.doMock('../src/lib/upi.js', async (orig) => ({ ...(await orig()), qrDataUrl: async () => { throw new Error('no canvas'); } }));
+    const { buildBillPdf: build } = await import('../src/lib/pdf.js');
+    const doc = await build({ settings: upiSettings, party: party0, jarName, jarTypes: jt2, logo, bill: mkBill() });
+    expect(doc.getNumberOfPages()).toBe(1);
+    vi.doUnmock('../src/lib/upi.js'); vi.resetModules();
+  });
+
+  it('statement PDF never carries a QR', async () => {
+    const rows = [{ d: { dateText: '01/11/2026', title: 'Bill 1', detail: '5 x Jar', outstanding: 20000 }, balance: 20000 }];
+    const doc = await buildStatementPdf({ party: { ...party0, outstanding: 20000, jarBalance: {} }, rows, settings: upiSettings, jarName, logo });
+    const text = Buffer.from(doc.output('arraybuffer')).toString('latin1');
+    expect(text).not.toContain('Scan karke UPI');
+  });
+});
+
+describe('UPI id in share texts', () => {
+  const bill2 = { billNo: '00104', dateKey: '2026-10-10', partyName: 'Ram', lines: [{ itemName: 'Water', qty: 1, rate: 4000, amount: 4000 }], total: 4000, prevOutstanding: 0, newOutstanding: 4000 };
+  it('billText adds one UPI line before the footer only when a valid id is set', () => {
+    const t = billText({ bill: bill2, party: { name: 'Ram' }, settings: { ...base, upiId: 'shop@okaxis' }, jarName, money });
+    expect(t).toContain('UPI: shop@okaxis');
+    expect(t.indexOf('UPI: shop@okaxis')).toBeLessThan(t.indexOf('THANK YOU FOR YOUR BUSINESS!'));
+    expect(t.match(/UPI:/g)).toHaveLength(1);
+    for (const id of ['', undefined, 'bad id', 'x@']) expect(billText({ bill: bill2, party: { name: 'Ram' }, settings: { ...base, upiId: id }, jarName, money })).not.toContain('UPI:');
+  });
+  it('billText UPI line does not depend on the dues switch', () => {
+    const t = billText({ bill: bill2, party: { name: 'Ram' }, settings: { ...base, upiId: 'shop@okaxis', showDuesOnPdf: false }, jarName, money });
+    expect(t).toContain('UPI: shop@okaxis'); expect(t).not.toContain('Total due now');
+  });
+  it('reminderText adds the UPI line before the thanks, nothing when not set', () => {
+    const p = { name: 'Ram', outstanding: 80000, jarBalance: {} };
+    const t = reminderText({ party: p, settings: { ...base, upiId: 'shop@okaxis' }, jarName, money });
+    expect(t).toMatch(/payment kar dein\.\nUPI: shop@okaxis\nDhanyavaad!/);
+    expect(reminderText({ party: p, settings: base, jarName, money })).toBe('Namaste Ram,\nBluvia Pure Drinking Water ki taraf se yaad dilana hai: aapka ₹800.00 baaki hai.\nKripya jaldi payment kar dein.\nDhanyavaad!');
+  });
+});

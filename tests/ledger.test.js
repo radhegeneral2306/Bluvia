@@ -377,3 +377,26 @@ describe('amount cap', () => {
     expect(Number.isSafeInteger(toPaise('9'.repeat(40)))).toBe(true);
   });
 });
+
+describe('restore together with linked entries (bill + deposit + jar return)', () => {
+  const bill = { id: 'b', type: 'bill', partyId: 'p1', dateKey: '2026-03-01', deleted: false, lines: [{ jarTypeId: 'j20', qty: 6, jarGiven: true }], total: 24000 };
+  const dep = { id: 'd', type: 'depositTaken', partyId: 'p1', dateKey: '2026-03-01', amount: 50000, deleted: false };
+  const ret = { id: 'r', type: 'jarReturn', partyId: 'p1', dateKey: '2026-03-01', jarTypeId: 'j20', qty: 2, deleted: false };
+  const gone = (t) => ({ ...t, deleted: true });
+
+  it('one combined restore plan is exactly the reverse of the combined delete plan', () => {
+    const del = planChanges([bill, dep, ret].map((t) => [t, gone(t)]));
+    const res = planChanges([bill, dep, ret].map((t) => [gone(t), t]));
+    expect(res.parties.p1.outstanding).toBe(-del.parties.p1.outstanding);
+    expect(res.parties.p1.deposit).toBe(-del.parties.p1.deposit);
+    expect(res.parties.p1.jars.j20).toBe(-del.parties.p1.jars.j20);
+    expect(res.global.daily['2026-03-01'].sales).toBe(24000); expect(res.global.daily['2026-03-01'].billsCount).toBe(1);
+    expect(res.parties.p1.outstanding).toBe(24000); expect(res.parties.p1.deposit).toBe(50000); expect(res.parties.p1.jars.j20).toBe(4);
+  });
+  it('restoring only the bill leaves deposit and jar return out', () => {
+    const only = planChange(gone(bill), bill);
+    expect(only.parties.p1.deposit).toBe(0);
+    expect(only.parties.p1.outstanding).toBe(24000);
+    expect(only.parties.p1.jars.j20).toBe(6);
+  });
+});

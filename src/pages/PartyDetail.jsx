@@ -4,11 +4,12 @@ import { useStore } from '../data/store.jsx';
 import { listTxns, softDeleteTxn } from '../data/api.js';
 import { askLinkedDelete } from '../lib/linkedDelete.js';
 import { dueView } from '../lib/advance.js';
-import { Receipt, HandCoins, ArrowUUpLeft, Bank, ShareNetwork, Phone, WhatsappLogo, Trash, ListBullets, FilePdf, ArrowsClockwise } from '@phosphor-icons/react';
+import { Receipt, HandCoins, ArrowUUpLeft, Bank, ShareNetwork, Phone, WhatsappLogo, Trash, ListBullets, FilePdf, ArrowsClockwise, QrCode } from '@phosphor-icons/react';
 import { Page, Tabs, Spinner, Empty, Modal, Avatar, useToast } from '../components/ui.jsx';
 import TxnRow, { EditLink } from '../components/TxnRow.jsx';
 import ShareBillModal from '../components/ShareBillModal.jsx';
 import LocationCard from '../components/LocationCard.jsx';
+import UpiQrSheet from '../components/UpiQrSheet.jsx';
 import { describeTxn } from '../lib/describe.js';
 import { findLastBill } from '../lib/repeatBill.js';
 import { buildStatementPdf } from '../lib/pdf.js';
@@ -27,6 +28,7 @@ export default function PartyDetail() {
   const [loading, setLoading] = useState(true);
   const [shareBill, setShareBill] = useState(null);
   const [stmtOpen, setStmtOpen] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const [finding, setFinding] = useState(false);
 
   const load = useCallback(async (more) => {
@@ -134,6 +136,7 @@ export default function PartyDetail() {
           <Link key={label} to={to} className={`btn flex-col !gap-1 !py-2 !px-1 min-h-[64px] text-xs ${primary ? 'btn-primary' : ''}`}><Icon size={22} />{label}</Link>
         ))}
       </div>
+      <button className="btn w-full" onClick={() => setQrOpen(true)}><QrCode size={20} />Paisa lo (UPI QR)</button>
       {(lastBill || hasMore) && (
         <button className="btn w-full" disabled={finding || (loading && !entries.length)} onClick={repeatLast}>
           <ArrowsClockwise size={20} />{finding ? 'Dhundh raha hai...' : 'Pichhla bill dobara'}
@@ -160,6 +163,7 @@ export default function PartyDetail() {
       <div className="text-center"><Link className="btn btn-ghost btn-sm text-slate-500 underline" to={q('/entry/new/adjustment')}>Manual adjustment entry</Link></div>
 
       <ShareBillModal bill={shareBill} onClose={() => setShareBill(null)} />
+      <UpiQrSheet open={qrOpen} onClose={() => setQrOpen(false)} partyName={party.name} billNo="" suggestedPaise={(party.outstanding || 0) > 0 ? party.outstanding : 0} />
       <Modal open={stmtOpen} onClose={() => setStmtOpen(false)} title="Statement share">
         <div className="space-y-3">
           <p className="text-xs text-slate-500">Statement mein wahi entries aayengi jo screen par loaded hain ({rows.length}). Zyada ke liye pehle "Load more" dabao.</p>

@@ -231,6 +231,59 @@ describe('Bluvia against Firestore emulator', () => {
     await expect(restoreAll(broken)).rejects.toThrow(/hissa \d+\/\d+ fail hua/);
   });
 
+  // ---- bill delete and restore together with its deposit and returned jars
+  const snapshot = async () => {
+    const p = await get('parties', partyId);
+    const sum = await get('stats', 'summary');
+    const day = (await get('stats', 'daily_2026-03-01')) || {};
+    return { out: p.outstanding, dep: p.depositBalance, jars: p.jarBalance[jar20] || 0, sOut: sum.totalOutstanding, sDep: sum.totalDepositHeld, sJars: sum.totalJarsOut[jar20] || 0, sales: day.sales || 0, bills: day.billsCount || 0 };
+  };
+  const newBill = () => api.createBill({
+    type: 'bill', partyId, partyName: 'Ram Traders', dateKey: '2026-03-01',
+    lines: [{ itemId: 'i1', itemName: '20L Jar Water', jarTypeId: jar20, qty: 6, rate: 4000, amount: 24000, jarGiven: true }],
+    subTotal: 24000, discount: 0, extraCharge: 0, total: 24000, note: '', depositAmount: 50000, depositJarTypeId: jar20, returns: { [jar20]: 2 },
+  });
+
+  it('delete a bill WITH its linked entries and restore it WITH them: every figure comes back and recalculation agrees', async () => {
+    const before = await snapshot();
+    const r = await newBill();
+    const created = await snapshot();
+    expect(created.out).toBe(before.out + 24000); expect(created.dep).toBe(before.dep + 50000); expect(created.jars).toBe(before.jars + 6 - 2);
+    expect(created.sales).toBe(before.sales + 24000); expect(created.bills).toBe(before.bills + 1);
+    const bill = { id: r.id, ...(await get('transactions', r.id)) };
+
+    await api.softDeleteTxn(bill, { withLinked: true });
+    expect(await snapshot()).toEqual(before);                    // everything reversed, deposit and jar return too
+    expect((await api.findDeletedLinked(r.id)).length).toBe(2);   // deposit taken and jar return
+    expect((await computeRecalc()).diffs).toEqual([]);
+
+    await api.restoreTxn({ ...bill, deleted: true }, { withLinked: true });
+    expect(await snapshot()).toEqual(created);                   // all back, same numbers as after the first save
+    expect((await api.findDeletedLinked(r.id)).length).toBe(0);
+    expect((await computeRecalc()).diffs).toEqual([]);
+  });
+
+  it('restoring only the bill leaves the deposit and jar return deleted, and balances stay consistent', async () => {
+    const before = await snapshot();
+    const r = await newBill();
+    const bill = { id: r.id, ...(await get('transactions', r.id)) };
+    await api.softDeleteTxn(bill, { withLinked: true });
+    await api.restoreTxn({ ...bill, deleted: true });            // bill only
+    const s = await snapshot();
+    expect(s.out).toBe(before.out + 24000);                       // the bill is back
+    expect(s.dep).toBe(before.dep);                               // deposit entry still deleted
+    expect(s.jars).toBe(before.jars + 6);                         // jars given count, the returned 2 do not
+    expect(s.sales).toBe(before.sales + 24000);
+    expect((await api.findDeletedLinked(r.id)).length).toBe(2);
+    expect((await computeRecalc()).diffs).toEqual([]);
+    // restoring an entry that is already active is refused
+    await expect(api.restoreTxn({ ...bill, deleted: true })).rejects.toThrow(/pehle se active/);
+    // the leftover linked entries can still be restored one by one
+    for (const l of await api.findDeletedLinked(r.id)) await api.restoreTxn(l);
+    expect((await api.findDeletedLinked(r.id)).length).toBe(0);
+    expect((await computeRecalc()).diffs).toEqual([]);
+  });
+
   it('rules: party area must be a short string; settings areas must be a list', async () => {
     await setDoc(doc(db, 'parties', partyId), { area: 'Sai Nagar' }, { merge: true });
     expect((await get('parties', partyId)).area).toBe('Sai Nagar');
@@ -250,6 +303,15 @@ describe('Bluvia against Firestore emulator', () => {
     await expect(setDoc(doc(db, 'parties', partyId), { lat: '21.2' }, { merge: true })).rejects.toThrow(/permission|false for/i);
     await expect(setDoc(doc(db, 'parties', partyId), { locAccuracy: -5 }, { merge: true })).rejects.toThrow(/permission|false for/i);
     await setDoc(doc(db, 'parties', partyId), { locAccuracy: null }, { merge: true }); // unknown accuracy is allowed
+  });
+
+  it('rules: UPI settings are short strings and the QR mode is bill or due', async () => {
+    await setDoc(doc(db, 'settings', 'main'), { upiId: 'shop@okaxis', upiName: 'Bluvia', upiRemark: 'Bill {billNo}', upiQrAmount: 'due' }, { merge: true });
+    expect((await get('settings', 'main')).upiId).toBe('shop@okaxis');
+    await expect(setDoc(doc(db, 'settings', 'main'), { upiQrAmount: 'everything' }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await expect(setDoc(doc(db, 'settings', 'main'), { upiId: 'x'.repeat(101) }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await expect(setDoc(doc(db, 'settings', 'main'), { upiName: 5 }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await setDoc(doc(db, 'settings', 'main'), { upiQrAmount: 'bill' }, { merge: true });
   });
 
   it('rules: bad data and signed-out access are rejected', async () => {

@@ -1,6 +1,10 @@
 import { downloadBlob } from './backup.js';
 import { fmtDate } from './dates.js';
 import { fromPaise } from './money.js';
+import { isValidVpa } from './upi.js';
+
+/** The UPI id to print in texts, or '' when none is set (or it is not a valid id). */
+export const upiTextId = (settings) => (isValidVpa(settings?.upiId) ? String(settings.upiId).trim() : '');
 
 export const pdfCurrency = (c) => (!c || c === '₹' ? 'Rs.' : c); // standard PDF fonts cannot print the rupee sign
 export function pdfMoney(p, cur) {
@@ -43,6 +47,8 @@ export function billText({ bill, party, settings, jarName, money }) {
     L.push(now < 0 ? `*Advance left: ${money(-now)}*` : `*Total due now: ${money(now)}*`);
     if (bill.jarBalanceAfter) L.push(`Jars with you: ${jarsText(bill.jarBalanceAfter, jarName)}`);
   }
+  const upi = upiTextId(settings);
+  if (upi) { L.push(''); L.push(`UPI: ${upi}`); }
   if (settings.footerNote) { L.push(''); L.push(settings.footerNote); }
   return L.join('\n');
 }
@@ -63,7 +69,7 @@ export function statementText({ party, rows, settings, jarName, money }) {
 
 export function reminderText({ party, settings, jarName, money }) {
   const jars = jarsText(party.jarBalance, jarName);
-  return `Namaste ${party.name},\n${settings.businessName} ki taraf se yaad dilana hai: aapka ${money(party.outstanding || 0)} baaki hai.${jars !== 'None' ? `\nAapke paas jars: ${jars}.` : ''}\nKripya jaldi payment kar dein. Dhanyavaad!`;
+  return `Namaste ${party.name},\n${settings.businessName} ki taraf se yaad dilana hai: aapka ${money(party.outstanding || 0)} baaki hai.${jars !== 'None' ? `\nAapke paas jars: ${jars}.` : ''}\nKripya jaldi payment kar dein.${upiTextId(settings) ? `\nUPI: ${upiTextId(settings)}` : ''}\nDhanyavaad!`;
 }
 
 /** Share via Web Share API (phones) else download. */

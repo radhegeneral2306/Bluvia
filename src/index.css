@@ -58,10 +58,11 @@ h1, h2, h3, p, li, .label { overflow-wrap: anywhere; }
   .card { @apply rounded-2xl bg-surface border border-slate-200; }
   .chip { @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold; }
   .num { @apply tabular-nums tracking-tight; }
-  .page-enter { animation: rise .28s cubic-bezier(.16,1,.3,1) both; }
+  .page-enter { animation: rise .28s cubic-bezier(.16,1,.3,1) backwards; } /* no fill-forwards: a finished animation must not keep a stacking context or layer */
   .skeleton { @apply relative overflow-hidden rounded-xl bg-slate-100; }
   .skeleton::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgb(var(--surface) / .6), transparent); animation: shimmer 1.4s infinite; }
 }
+button, a, [role='button'], [role='tab'], label { touch-action: manipulation; }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 
 @media (prefers-reduced-motion: reduce) {

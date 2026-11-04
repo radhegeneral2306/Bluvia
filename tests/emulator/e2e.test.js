@@ -242,6 +242,16 @@ describe('Bluvia against Firestore emulator', () => {
     await setDoc(doc(db, 'parties', partyId), { area: '' }, { merge: true }); // no area is allowed
   });
 
+  it('rules: party location must be valid numbers', async () => {
+    await setDoc(doc(db, 'parties', partyId), { lat: 21.2514, lng: 81.6296, locAccuracy: 18, locSource: 'gps' }, { merge: true });
+    expect((await get('parties', partyId)).lat).toBe(21.2514);
+    await expect(setDoc(doc(db, 'parties', partyId), { lat: 91 }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await expect(setDoc(doc(db, 'parties', partyId), { lng: -181 }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await expect(setDoc(doc(db, 'parties', partyId), { lat: '21.2' }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await expect(setDoc(doc(db, 'parties', partyId), { locAccuracy: -5 }, { merge: true })).rejects.toThrow(/permission|false for/i);
+    await setDoc(doc(db, 'parties', partyId), { locAccuracy: null }, { merge: true }); // unknown accuracy is allowed
+  });
+
   it('rules: bad data and signed-out access are rejected', async () => {
     await expect(setDoc(doc(db, 'transactions', 'bad'), { type: 'receipt', partyId, dateKey: '2026-01-01', amount: 'abc' })).rejects.toThrow(/permission|false for/i);
     await expect(setDoc(doc(db, 'secret', 'x'), { a: 1 })).rejects.toThrow(/permission|false for/i);

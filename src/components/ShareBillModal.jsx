@@ -1,15 +1,18 @@
 import { useState } from 'react';
 import { useStore } from '../data/store.jsx';
-import { FilePdf, WhatsappLogo, Check } from '@phosphor-icons/react';
+import { FilePdf, WhatsappLogo, Check, QrCode } from '@phosphor-icons/react';
 import { Modal, Tabs, useToast } from './ui.jsx';
 import { buildBillPdf } from '../lib/pdf.js';
 import { sharePdf, billText, waLink } from '../lib/share.js';
+import { qrAmountFor } from '../lib/upi.js';
+import UpiQrSheet from './UpiQrSheet.jsx';
 
 export default function ShareBillModal({ bill, onClose }) {
   const { settings, partyMap, jarName, jarTypes, money } = useStore();
   const toast = useToast();
   const [layout, setLayout] = useState(() => { try { return localStorage.getItem('bluvia_pdf_layout') === 'thermal' ? 'thermal' : 'invoice'; } catch { return 'invoice'; } });
   const [busy, setBusy] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   if (!bill) return null;
   const party = partyMap[bill.partyId];
   const pick = (l) => { setLayout(l); try { localStorage.setItem('bluvia_pdf_layout', l); } catch { /* ignore */ } };
@@ -33,8 +36,11 @@ export default function ShareBillModal({ bill, onClose }) {
         <a className={`btn w-full ${party?.phone ? '' : 'opacity-50 pointer-events-none'}`} target="_blank" rel="noreferrer"
           href={waLink(party?.phone, text, settings.countryCode)}><WhatsappLogo size={20} />WhatsApp text bhejo</a>
         {!party?.phone && <p className="text-xs text-amber-700">Party ka phone number nahi hai. Party edit karke daalo.</p>}
+        <button className="btn w-full" onClick={() => setQrOpen(true)}><QrCode size={20} />UPI QR dikhao</button>
         <button className="btn btn-ghost w-full" onClick={onClose}><Check size={20} weight="bold" />Done</button>
       </div>
+      <UpiQrSheet open={qrOpen} onClose={() => setQrOpen(false)} partyName={party?.name || bill.partyName || ''} billNo={bill.billNo || ''}
+        suggestedPaise={qrAmountFor(settings, { billTotal: bill.total, due: bill.newOutstanding ?? ((bill.prevOutstanding || 0) + (bill.total || 0)) })} />
     </Modal>
   );
 }

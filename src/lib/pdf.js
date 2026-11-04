@@ -1,6 +1,7 @@
 // PDF builders (jsPDF is loaded lazily so the first screen stays light).
 import { fmtDate } from './dates.js';
 import { pdfMoney, jarsText } from './share.js';
+import { upiConfigured, qrAmountFor, buildUpiLink, fillRemark, qrDataUrl } from './upi.js';
 
 // ---------------------------------------------------------------------------------------------
 // Text kit. jsPDF's standard fonts only know Latin-1 and jsPDF does no complex-script shaping, so
@@ -185,10 +186,32 @@ function duesLine(bill, m) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// UPI payment QR (optional). Returns null when UPI is not configured or the QR cannot be made: the bill is never blocked by it.
+// ---------------------------------------------------------------------------------------------
+const QR_CAPTION = 'Scan karke UPI se pay karo';
+const QR_NOTE = 'Amount payment app mein badal sakte ho';
+
+async function makeUpiQr({ bill, party, settings }) {
+  try {
+    if (!upiConfigured(settings)) return null;
+    const amountPaise = qrAmountFor(settings, { billTotal: bill.total, due: bill.newOutstanding ?? ((bill.prevOutstanding || 0) + bill.total) });
+    const link = buildUpiLink({
+      vpa: settings.upiId, name: settings.upiName || settings.businessName, amountPaise,
+      note: fillRemark(settings.upiRemark, { billNo: bill.billNo, partyName: party?.name || bill.partyName }),
+    });
+    if (!link) return null;
+    const dataUrl = await qrDataUrl(link, { size: 300 });
+    return { dataUrl, vpa: String(settings.upiId).trim(), amountPaise, link };
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Narrow (thermal) receipt. Built twice: first on a very tall page to measure the real content height,
 // then on a page of exactly that height, so nothing is ever cut off.
 // ---------------------------------------------------------------------------------------------
-async function buildThermalPdf({ bill, party, settings, jarName }) {
+async function buildThermalPdf({ bill, party, settings, jarName, qr = null }) {
   const { jsPDF } = await import('jspdf');
   const m = (p) => pdfMoney(p, settings.currency);
   const W = 80, pad = 4, inner = W - 2 * pad;
@@ -256,6 +279,16 @@ async function buildThermalPdf({ bill, party, settings, jarName }) {
     row(now < 0 ? 'ADVANCE LEFT' : 'TOTAL DUE', m(Math.abs(now)), true);
     if (bill.jarBalanceAfter) { y += 1; block(`Jars with you: ${jarsText(bill.jarBalanceAfter, jarName)}`, 7.5); }
     if (bill.note) block(`Note: ${bill.note}`, 7.5);
+    if (qr) {
+      const q = 36; // mm
+      y += 2; rule();
+      center(QR_CAPTION, 8, true);
+      try { doc.addImage(qr.dataUrl, 'PNG', (W - q) / 2, y, q, q); } catch { /* skip the picture, keep the text */ }
+      y += q + 2;
+      center(`UPI: ${qr.vpa}`, 7);
+      if (qr.amountPaise > 0) center(`Amount: ${m(qr.amountPaise)}`, 8, true);
+      center(QR_NOTE, 6.5);
+    }
     if (settings.footerNote) { y += 3; rule(); block(settings.footerNote, 7.5, 'italic', 'center'); }
     return y;
   };
@@ -272,7 +305,7 @@ async function buildThermalPdf({ bill, party, settings, jarName }) {
 // were measured from the owner's PDF; with short content they are unchanged, with long content the
 // blocks below are pushed down instead of overlapping.
 // ---------------------------------------------------------------------------------------------
-async function buildInvoicePdf({ bill, party, settings, jarName, jarTypes, logo }) {
+async function buildInvoicePdf({ bill, party, settings, jarName, jarTypes, logo, qr = null }) {
   const { jsPDF } = await import('jspdf');
   const doc = new jsPDF({ unit: 'pt', format: 'letter' });
   const kit = textKit(doc);
@@ -415,12 +448,29 @@ async function buildInvoicePdf({ bill, party, settings, jarName, jarTypes, logo 
     fyy = Math.max(base(441.3), base(fyy + 24 - 13));
     put(settings.footerNote, 10, 'bold', NAVY);
   }
+
+  // UPI payment QR: below everything else (so it can never overlap text), QR on the right, words on the left
+  if (qr) {
+    const Q = 90;
+    if (fyy + 16 + Q > PAGE_H - 40) { doc.addPage(); fyy = 60; } else fyy += 16;
+    const qy = fyy;
+    try { doc.addImage(qr.dataUrl, 'PNG', R - Q, qy, Q, Q); } catch { /* skip the picture, keep the text */ }
+    let ty = qy + 12;
+    setText('helvetica', 'bold', 11, NAVY); kit.text(QR_CAPTION, L, ty); ty += 16;
+    setText('helvetica', 'normal', 10);
+    for (const ln of kit.wrap(`UPI: ${qr.vpa}`, R - Q - L - 14)) { kit.text(ln, L, ty); ty += 13; }
+    if (qr.amountPaise > 0) { setText('helvetica', 'bold', 10); kit.text(`Amount: ${m(qr.amountPaise)}`, L, ty); ty += 13; }
+    setText('helvetica', 'normal', 9, [90, 90, 90]);
+    for (const ln of kit.wrap(QR_NOTE, R - Q - L - 14)) { kit.text(ln, L, ty); ty += 11; }
+    fyy = qy + Q;
+  }
   return doc;
 }
 
 export async function buildBillPdf({ bill, party, settings, jarName, jarTypes, layout = 'invoice', logo = null }) {
-  if (layout === 'thermal') return buildThermalPdf({ bill, party, settings, jarName });
-  return buildInvoicePdf({ bill, party, settings, jarName, jarTypes, logo: logo || (await loadLogo().catch(() => null)) });
+  const qr = await makeUpiQr({ bill, party, settings });
+  if (layout === 'thermal') return buildThermalPdf({ bill, party, settings, jarName, qr });
+  return buildInvoicePdf({ bill, party, settings, jarName, jarTypes, logo: logo || (await loadLogo().catch(() => null)), qr });
 }
 
 export async function buildStatementPdf({ party, rows, settings, jarName, logo = null }) {

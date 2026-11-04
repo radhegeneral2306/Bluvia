@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DownloadSimple, X, Calculator, Database, SignOut, CheckCircle, Info, Sun, Moon, DeviceMobile, Plus } from '@phosphor-icons/react';
-import { signOut } from 'firebase/auth';
-import { auth } from '../lib/firebase.js';
 import { useStore } from '../data/store.jsx';
 import { saveSettings } from '../data/api.js';
 import { Page, Field, StickyBar, useToast } from '../components/ui.jsx';
@@ -10,8 +8,18 @@ import { getReads } from '../lib/reads.js';
 import { getTheme, setTheme } from '../lib/theme.js';
 import { areaList, addArea, removeArea, partiesUsingArea, strayAreas } from '../lib/areas.js';
 import { canInstall, promptInstall, onInstallChange, isStandalone, isIOS } from '../lib/pwa.js';
+import { isValidVpa, fillRemark, REMARK_DEFAULT } from '../lib/upi.js';
+import { secureLogout } from '../lib/logout.js';
 
 const FREE_LIMIT = 50000;
+
+const pad2 = (n) => String(n).padStart(2, '0');
+/** Firestore Timestamp (or Date) -> dd/mm/yyyy hh:mm, empty when missing. */
+function fmtDateTime(ts) {
+  const d = ts && typeof ts.toDate === 'function' ? ts.toDate() : ts instanceof Date ? ts : null;
+  if (!d || Number.isNaN(d.getTime())) return '';
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
 
 export default function Settings() {
   const { settings, user, parties } = useStore();
@@ -23,6 +31,8 @@ export default function Settings() {
   const [nameErr, setNameErr] = useState('');
   const [newArea, setNewArea] = useState('');
   const [areaErr, setAreaErr] = useState('');
+  const [upiErr, setUpiErr] = useState('');
+  const [loggingOut, setLoggingOut] = useState(false);
   const [nextEdited, setNextEdited] = useState(false); // did the user type in 'Next bill number'?
   const [theme, setThemeState] = useState(getTheme());
 
@@ -43,11 +53,19 @@ export default function Settings() {
       return;
     }
     setNameErr('');
+    const upiId = (f.upiId || '').trim();
+    if (upiId && !isValidVpa(upiId)) {
+      setUpiErr('UPI ID sahi nahi hai, jaise name@bank');
+      toast('UPI ID sahi karo', 'err');
+      return;
+    }
+    setUpiErr('');
     setBusy(true);
     try {
       const patch = {
         businessName: f.businessName.trim(), managerName: f.managerName || '', invoiceFor: f.invoiceFor || '', showDuesOnPdf: f.showDuesOnPdf !== false, billNoPad: Math.max(0, parseInt(f.billNoPad, 10) || 0), address: f.address || '', phone: f.phone || '', billPrefix: f.billPrefix || '',
         footerNote: f.footerNote || '', currency: f.currency || '₹', countryCode: (f.countryCode || '').replace(/\D/g, ''), paymentModes: f.paymentModes, areas: areaList({ areas: f.areas }),
+        upiId, upiName: (f.upiName || '').trim(), upiRemark: (f.upiRemark || '').trim() || REMARK_DEFAULT, upiQrAmount: f.upiQrAmount === 'due' ? 'due' : 'bill',
       };
       // Only send the bill counter when the user changed it. Otherwise a stale form would roll the counter back
       // and the next bill would repeat an invoice number issued from another device.
@@ -75,6 +93,12 @@ export default function Settings() {
     if (!r.error) setF({ ...f, areas: r.list });
   };
   const reads = getReads();
+  const lastBackup = fmtDateTime(settings?.lastBackupAt);
+  async function doLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try { await secureLogout(); } finally { setLoggingOut(false); }
+  }
 
   const H = ({ children }) => <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">{children}</h2>;
   const pickTheme = (t) => { setTheme(t); setThemeState(t); };
@@ -110,6 +134,36 @@ export default function Settings() {
           <Field label="Invoice 'FOR' text (default)" hint="Har bill par badal sakte ho"><input className="input" value={f.invoiceFor || ''} onChange={set('invoiceFor')} /></Field>
           <label className="flex items-center gap-3 min-h-[44px] text-sm text-slate-700"><input type="checkbox" className="w-5 h-5 accent-brand-600" checked={f.showDuesOnPdf !== false} onChange={(e) => setF({ ...f, showDuesOnPdf: e.target.checked })} /> Invoice par purana baaki / total baaki line dikhao</label>
           <Field label="Bill footer note"><textarea className="input !py-2.5" rows={2} value={f.footerNote || ''} onChange={set('footerNote')} /></Field>
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <H>UPI payment</H>
+        <div className="card p-4 space-y-4">
+          <p className="text-xs text-slate-500">UPI ID daalne par bill ke PDF par payment QR aayega. Customer payment app se scan karke pay karta hai. Paisa aane ki khabar app ko nahi milti, receipt aap khud daalte ho.</p>
+          <Field label="UPI ID" hint="Jaise shop@okaxis">
+            <input className="input" value={f.upiId || ''} autoCapitalize="none" autoCorrect="off" spellCheck={false} aria-invalid={!!upiErr}
+              onChange={(e) => { setUpiErr(''); set('upiId')(e); }} />
+            {upiErr && <span className="block text-xs text-red-600 mt-1.5" role="alert">{upiErr}</span>}
+          </Field>
+          <Field label="Payee name" hint="Customer ko payment app mein yahi naam dikhega">
+            <input className="input" value={f.upiName || ''} onChange={set('upiName')} />
+            {!(f.upiName || '').trim() && <span className="block text-xs text-slate-500 mt-1.5">Khali rakhoge to business name use hoga: {f.businessName || ''}</span>}
+          </Field>
+          <Field label="Remark" hint="Jaise: Bill {billNo}. {party} bhi laga sakte ho">
+            <input className="input" value={f.upiRemark ?? ''} onChange={set('upiRemark')} />
+            <span className="block text-xs text-slate-500 mt-1.5">Preview: <b className="num">{fillRemark(f.upiRemark, { billNo: '00104', partyName: 'Ram Traders' })}</b></span>
+          </Field>
+          <div>
+            <span className="label">QR mein amount</span>
+            <div className="flex bg-slate-100 rounded-xl p-1 gap-1" role="radiogroup" aria-label="QR mein amount">
+              {[['bill', 'Is bill ka'], ['due', 'Total baaki']].map(([k, label]) => (
+                <button key={k} type="button" role="radio" aria-checked={(f.upiQrAmount === 'due' ? 'due' : 'bill') === k} onClick={() => setF({ ...f, upiQrAmount: k })}
+                  className={`flex-1 min-h-[44px] rounded-[9px] text-sm font-semibold transition-colors ${(f.upiQrAmount === 'due' ? 'due' : 'bill') === k ? 'bg-surface shadow-sm text-brand-700' : 'text-slate-500'}`}>{label}</button>
+              ))}
+            </div>
+            <span className="block text-xs text-slate-500 mt-1.5">Customer apni payment app mein amount badal sakta hai ya nahi, wo uski app par nirbhar hai.</span>
+          </div>
         </div>
       </section>
 
@@ -192,12 +246,17 @@ export default function Settings() {
             <div className="h-2 bg-slate-200 rounded-full mt-2 overflow-hidden"><div className={`h-2 rounded-full ${reads > 35000 ? 'bg-red-500' : 'bg-brand-500'}`} style={{ width: `${Math.min(100, (reads / FREE_LIMIT) * 100)}%` }} /></div>
             <p className="text-xs text-slate-500 mt-1.5">Yeh sirf is phone/browser ka andaaza hai. Asli count Firebase Console → Usage mein dekho.</p>
           </div>
+          <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3 text-sm">
+            <span className="text-slate-600">Last backup: <b className="num text-slate-800">{lastBackup || 'Abhi tak nahi liya'}</b></span>
+            <Link to="/backup" className="btn btn-ghost btn-sm shrink-0 underline">Backup lo</Link>
+          </div>
           <div className="grid gap-2">
             <Link to="/recalc" className="btn w-full"><Calculator size={20} />Recalculate balances from entries</Link>
             <Link to="/backup" className="btn w-full"><Database size={20} />Backup / Restore</Link>
           </div>
           <p className="text-xs text-slate-500">Logged in: {user?.email}</p>
-          <button className="btn btn-danger w-full" onClick={() => signOut(auth)}><SignOut size={20} />Logout</button>
+          <button className="btn btn-danger w-full" disabled={loggingOut} onClick={doLogout}><SignOut size={20} />Logout</button>
+          <p className="text-xs text-slate-500">Logout par is phone se aapka saara local data bhi hat jayega.</p>
         </div>
       </section>
       <StickyBar><button className="btn btn-primary flex-1" disabled={busy} onClick={save}>Save settings</button></StickyBar>

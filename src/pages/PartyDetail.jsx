@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { errText } from '../lib/errors.js';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useStore } from '../data/store.jsx';
 import { useT } from '../lib/i18n.js';
@@ -40,7 +41,7 @@ export default function PartyDetail() {
       const r = await listTxns({ partyId: id, after: more ? cursor : null });
       setEntries((prev) => (more ? [...prev, ...r.items] : r.items));
       setCursor(r.last); setHasMore(r.hasMore);
-    } catch (e) { toast(tr('party.err.load', { msg: e.message }), 'err', 6000); } finally { setLoading(false); }
+    } catch (e) { toast(tr('party.err.load', { msg: errText(e, tr) }), 'err', 6000); } finally { setLoading(false); }
   }, [id, cursor, toast, tr]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(false); }, [id]);
@@ -67,7 +68,7 @@ export default function PartyDetail() {
       const gone = new Set([t.id, ...linked.map((l) => l.id)]);
       setEntries((p) => p.filter((x) => !gone.has(x.id)));
       toast(withLinked ? tr('party.toast.deletedLinked') : tr('party.toast.deleted'));
-    } catch (e) { toast(e.message, 'err'); }
+    } catch (e) { toast(errText(e, tr), 'err'); }
   }
 
   const actions = (row) => (
@@ -104,7 +105,7 @@ export default function PartyDetail() {
       const found = findLastBill(acc);
       if (found) nav(`/bill/new?party=${id}&repeat=${found.id}`);
       else toast(more ? tr('party.toast.noBillMore') : tr('party.toast.noBill'), 'warn');
-    } catch (e) { toast(tr('party.err.findBill', { msg: e.message }), 'err', 6000); } finally { setFinding(false); }
+    } catch (e) { toast(tr('party.err.findBill', { msg: errText(e, tr) }), 'err', 6000); } finally { setFinding(false); }
   }
 
   async function stmtPdf() {

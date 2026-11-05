@@ -147,7 +147,7 @@ export function Modal({ open, onClose, title, children }) {
         <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mb-3 sm:hidden" />
         <div className="flex items-center mb-3">
           <h2 id={titleId} className="font-semibold text-lg flex-1">{title}</h2>
-          <button className="btn btn-ghost btn-sm !w-10 !px-0 rounded-full" onClick={onClose} aria-label={t('ui.close')}><X size={20} /></button>
+          <button className="btn btn-ghost btn-sm !w-11 !min-h-[44px] !px-0 rounded-full" onClick={onClose} aria-label={t('ui.close')}><X size={20} /></button>
         </div>
         {children}
       </div>

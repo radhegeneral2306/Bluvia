@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { errText } from '../lib/errors.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { Plus, ShareNetwork, Trash, Receipt, FunnelSimple, ArrowsClockwise } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
@@ -33,7 +34,7 @@ export default function Bills() {
     try {
       const r = await listTxns({ type, from: from || null, to: to || null, after: more ? c : null });
       setItems((p) => (more ? [...p, ...r.items] : r.items)); setCursor(r.last); setHasMore(r.hasMore);
-    } catch (e) { toast(tr('bills.loadFail', { msg: e.message }), 'err', 6000); } finally { setLoading(false); }
+    } catch (e) { toast(tr('bills.loadFail', { msg: errText(e, tr) }), 'err', 6000); } finally { setLoading(false); }
   }, [type, from, to, toast, tr]);
   useEffect(() => { load(false); }, [load]);
 
@@ -45,7 +46,7 @@ export default function Bills() {
       const gone = new Set([t.id, ...linked.map((l) => l.id)]);
       setItems((p) => p.filter((x) => !gone.has(x.id)));
       toast(withLinked ? tr('bills.deletedLinked') : tr('bills.deleted'));
-    } catch (e) { toast(e.message, 'err'); }
+    } catch (e) { toast(errText(e, tr), 'err'); }
   }
   const rows = items.map((t) => ({ t, d: describeTxn(t, { jarName, money }) }));
   const actions = (row) => (

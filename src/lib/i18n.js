@@ -1,6 +1,6 @@
 // Tiny dependency-free i18n. Keys are namespaced ('nav.home', 'bill.save'); params use {name}.
 // Language per user: users/{uid}.lang ('en' | 'hi'), mirrored in localStorage 'bluvia_lang'.
-import { useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase.js';
 import { useStore } from '../data/store.jsx';
@@ -61,6 +61,8 @@ export function useT() {
   const lang = resolveLang(profile);
   current = lang;
   const uid = user?.uid;
+  // remember the saved language on this device so the login screen and the next start open in the same language (no flip)
+  useEffect(() => { if (isLang(profile?.lang) && readLocal() !== profile.lang && override === null) writeLocal(profile.lang); }, [profile?.lang]);
   const tt = useCallback((key, params) => translate(lang, key, params), [lang]);
   const setLang = useCallback((next) => {
     if (!isLang(next)) return;

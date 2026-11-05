@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { errText } from '../lib/errors.js';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Trash, Plus, ArrowLeft, UsersThree, ArrowsClockwise, X } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
@@ -195,7 +196,7 @@ export default function BillForm() {
         setSaved({ ...bill, id: r.id, billNo: r.billNo, prevOutstanding: r.prevOutstanding, newOutstanding: r.prevOutstanding + total, jarBalanceAfter: r.jarBalanceAfter, depositCollectedInBill: depOn ? depAmt : 0, returnedInBill: Object.fromEntries(Object.entries(returns).filter(([, n]) => n > 0)) });
       }
     } catch (e) {
-      toast(e.message || tr('bill.saveFail'), 'err', 6000);
+      toast(errText(e, tr), 'err', 6000);
       setBusy(false);
     }
   }

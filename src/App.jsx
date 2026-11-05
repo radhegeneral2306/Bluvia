@@ -52,7 +52,7 @@ function UpdateBar() {
     <div className="bg-brand-600 text-white text-sm px-4 py-2 flex items-center justify-center gap-3" role="status">
       <ArrowsClockwise size={18} weight="bold" className="shrink-0" />
       {t('app.update.text')}
-      <button className="btn btn-sm !min-h-[36px] !bg-white !text-[#01616a] !border-white" onClick={update}>{t('app.update.btn')}</button>
+      <button className="btn btn-sm !min-h-[44px] !bg-white !text-[#01616a] !border-white" onClick={update}>{t('app.update.btn')}</button>
     </div>
   );
 }
@@ -91,8 +91,11 @@ function Gate() {
     return (
       <div className="p-6 max-w-lg mx-auto">
         <h1 className="text-xl font-semibold mb-2 text-red-700">{t('app.denied.title')}</h1>
-        <p className="text-sm text-slate-700">{t('app.denied.body')}</p>
-        <p className="text-sm mt-2 text-slate-700">{t('app.denied.uid')} <code className="break-all num">{user.uid}</code></p>
+        <p className="text-sm text-slate-700">{t('app.denied.staff')}</p>
+        <p className="text-sm mt-3 text-slate-700">{t('app.denied.uid')}</p>
+        <code className="block mt-1 rounded-xl bg-slate-100 border border-slate-200 px-3 py-2.5 text-sm break-all num select-all">{user.uid}</code>
+        <p className="text-xs mt-4 text-slate-500">{t('app.denied.owner')}</p>
+        <button className="btn btn-secondary mt-4" onClick={() => signOut(auth)}>{t('common.logout')}</button>
       </div>
     );
   }

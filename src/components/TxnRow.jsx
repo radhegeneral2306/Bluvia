@@ -17,11 +17,27 @@ const ICONS = {
   adjustment: [SlidersHorizontal, 'bg-slate-100 text-slate-700'],
 };
 
+const STD_MODES = { cash: 'cash', upi: 'upi', bank: 'bank' };
+
+/** Translate the English text built by describeTxn (kept English for tests) at render time. */
+function localize(t, d, tr) {
+  let { title, detail, note } = d;
+  if (t.type === 'bill') title = tr('txn.billNo', { no: t.billNo || '' }).trim();
+  else if (ICONS[t.type]) title = tr(`txn.type.${t.type}`);
+  if (t.type === 'receipt' && t.mode && STD_MODES[String(t.mode).trim().toLowerCase()] && detail.startsWith(t.mode)) {
+    detail = tr(`txn.mode.${STD_MODES[String(t.mode).trim().toLowerCase()]}`) + detail.slice(t.mode.length);
+  }
+  const m = /^With bill (.+)$/.exec(note || '');
+  if (m) note = tr('txn.withBill', { no: m[1] });
+  return { ...d, title, detail, note };
+}
+
 /** One entry in a list. `row` = {t, d, balance?}. */
 export default function TxnRow({ row, money, showParty, actions }) {
-  const { t, d } = row;
+  const { t, d: d0 } = row;
   const { profile, user, isAdmin } = useStore();
   const { t: tr } = useT();
+  const d = localize(t, d0, tr);
   const by = byLine(t);
   const left = !isAdmin && canModifyTxn(profile, user?.uid, t) ? editMinutesLeft(profile, t) : null;
   const amt = d.outstanding;

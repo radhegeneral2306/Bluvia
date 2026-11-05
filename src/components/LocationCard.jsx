@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { errText } from '../lib/errors.js';
 import { Link } from 'react-router-dom';
 import { MapPin, Crosshair, LinkSimple, NavigationArrow, MapTrifold, WarningCircle, CheckCircle, Warning } from '@phosphor-icons/react';
 import { Modal, Field, useToast } from './ui.jsx';
@@ -49,7 +50,7 @@ export default function LocationCard({ party }) {
     setMode('gps'); setPhase('searching'); setProgress(null); setResult(null); setError(''); setFarConfirm(false);
     getBestPosition({ maxMs: 12000, goodEnough: 25, onProgress: (p) => { if (run.current === id) setProgress(p.accuracy); } })
       .then((r) => { if (run.current === id) { setResult(r); setPhase('result'); } })
-      .catch((e) => { if (run.current === id) { setError(e?.message || tr('loc.err.none')); setPhase('error'); } });
+      .catch((e) => { if (run.current === id) { setError(e?.code ? tr('loc.gps.' + e.code) : tr('loc.err.none')); setPhase('error'); } });
   };
   const startLink = () => { run.current += 1; setMode('link'); setText(''); setFarConfirm(false); };
 
@@ -67,7 +68,7 @@ export default function LocationCard({ party }) {
       const st = await saveLocation(party.id, { lat: target.lat, lng: target.lng, accuracy: target.accuracy, source: mode === 'link' ? 'link' : 'gps' });
       toast(st === 'queued' ? tr('loc.toast.queued') : tr('loc.toast.saved'), st === 'queued' ? 'warn' : 'ok');
       close();
-    } catch (e) { toast(e.message || tr('loc.err.save'), 'err'); } finally { setBusy(false); }
+    } catch (e) { toast(errText(e, tr), 'err'); } finally { setBusy(false); }
   }
 
   const urls = has ? navUrls(party.lat, party.lng) : null;

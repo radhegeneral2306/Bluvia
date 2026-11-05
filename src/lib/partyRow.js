@@ -10,7 +10,7 @@ export function jarCode(jt, index = 0) {
   return String.fromCharCode(65 + (index % 26));
 }
 
-/** "N 3, C 2": jars currently with the party (only non-zero counts), in jarTypes order. Unknown ids come last as "?". */
+/** "Normal 3, Cold 2": jars currently with the party (full type name, only non-zero counts), in jarTypes order. Unknown ids come last as "?". */
 export function jarsShort(jarBalance, jarTypes) {
   const bal = jarBalance || {};
   const known = new Set();
@@ -18,7 +18,7 @@ export function jarsShort(jarBalance, jarTypes) {
   (jarTypes || []).forEach((j, i) => {
     known.add(j.id);
     const n = bal[j.id] || 0;
-    if (n) parts.push(`${jarCode(j, i)} ${n}`);
+    if (n) parts.push(`${String(j.name || '').trim() || jarCode(j, i)} ${n}`);
   });
   for (const [id, n] of Object.entries(bal)) if (!known.has(id) && n) parts.push(`? ${n}`);
   return parts.join(', ');

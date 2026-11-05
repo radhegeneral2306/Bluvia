@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { errText } from '../lib/errors.js';
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useStore } from '../data/store.jsx';
 import { useT } from '../lib/i18n.js';
@@ -125,7 +126,7 @@ export default function EntryForm() {
       else status = (await createEntry(t)).status;
       toast(status === 'queued' ? tr('entry.toast.queued') : tr('entry.toast.saved'), status === 'queued' ? 'warn' : 'ok');
       nav(`/party/${f.partyId}`, { replace: true });
-    } catch (e) { toast(e.message, 'err'); setBusy(false); }
+    } catch (e) { toast(errText(e, tr), 'err'); setBusy(false); }
   }
 
   const tabs = GROUPS[group].types.length > 1 ? GROUPS[group].types.filter((tp) => isAdmin || STAFF_TYPES.includes(tp)).map((tp) => [tp, tr(LABEL[tp])]) : null;

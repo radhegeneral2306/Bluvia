@@ -1,4 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
+import { errText } from '../lib/errors.js';
+import { useT } from '../lib/i18n.js';
 import { collection, query, where, orderBy, limit, startAfter } from 'firebase/firestore';
 import { ClockCounterClockwise, SealCheck, ArrowRight } from '@phosphor-icons/react';
 import { db } from '../lib/firebase.js';
@@ -22,6 +24,7 @@ function Chip({ on, onClick, children }) {
 function ChangesTab() {
   const { money, jarName } = useStore();
   const toast = useToast();
+  const { t: tr } = useT();
   const [rows, setRows] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
@@ -41,7 +44,7 @@ function ChangesTab() {
       setRows((p) => (more ? [...p, ...items] : items));
       setCursor(snap.docs[snap.docs.length - 1] || cursor);
       setHasMore(snap.docs.length === PAGE);
-    } catch (e) { setFailed(true); toast(e.message || 'Changes load nahi hue', 'err'); } finally { setLoading(false); }
+    } catch (e) { setFailed(true); toast(errText(e, tr), 'err'); } finally { setLoading(false); }
   }
   useEffect(() => { load(false); /* eslint-disable-next-line */ }, []);
 
@@ -111,6 +114,7 @@ function ChangesTab() {
 function VerifyTab({ onCount }) {
   const { money } = useStore();
   const toast = useToast();
+  const { t: tr } = useT();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -121,7 +125,7 @@ function VerifyTab({ onCount }) {
     try {
       const snap = await qDocs(query(collection(db, 'transactions'), where('type', '==', 'receipt'), where('verified', '==', false), where('deleted', '==', false)));
       setItems(sortPending(snap.docs.map(withId), 100));
-    } catch (e) { setFailed(true); toast(e.message || 'Receipts load nahi hui', 'err'); } finally { setLoading(false); }
+    } catch (e) { setFailed(true); toast(errText(e, tr), 'err'); } finally { setLoading(false); }
   }
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
   useEffect(() => { onCount(loading || failed ? null : items.length); }, [items, loading, failed]); // eslint-disable-line
@@ -132,7 +136,7 @@ function VerifyTab({ onCount }) {
       await verifyReceipt(t);
       setItems((p) => p.filter((x) => x.id !== t.id));
       toast('Verify ho gayi');
-    } catch (e) { toast(e.message || 'Verify nahi hui', 'err'); } finally { setBusy(''); }
+    } catch (e) { toast(errText(e, tr), 'err'); } finally { setBusy(''); }
   }
   async function all() {
     if (!items.length || !window.confirm(`Bank statement se check kar liya? Yeh ${items.length} receipts verify ho jayengi.`)) return;
@@ -145,7 +149,7 @@ function VerifyTab({ onCount }) {
         setItems((p) => p.filter((x) => x.id !== t.id));
       }
       toast(`${done} receipts verify ho gayi`);
-    } catch (e) { toast(`${done} verify huin, phir ruk gaya: ${e.message || 'error'}`, 'err'); } finally { setBusy(''); }
+    } catch (e) { toast(tr('err.verifyStopped', { done, msg: errText(e, tr) }), 'err'); } finally { setBusy(''); }
   }
 
   if (loading && !items.length) return <Spinner />;

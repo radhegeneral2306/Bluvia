@@ -9,8 +9,8 @@ describe('partyRow', () => {
     expect(jarCode(jt[1], 1)).toBe('CO');
     expect(jarCode(jt[2], 2)).toBe('C');
   });
-  it('jarsShort lists only non-zero jars', () => {
-    expect(jarsShort({ a: 3, b: 0, c: 2 }, jt)).toBe('N 3, C 2');
+  it('jarsShort uses full names, lists only non-zero jars', () => {
+    expect(jarsShort({ a: 3, b: 0, c: 2 }, jt)).toBe('Normal 3, C 2');
     expect(jarsShort({}, jt)).toBe('');
     expect(jarsShort(undefined, jt)).toBe('');
     expect(jarsShort({ zz: 1 }, jt)).toBe('? 1');

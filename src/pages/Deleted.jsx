@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { errText } from '../lib/errors.js';
+import { useT } from '../lib/i18n.js';
 import { ArrowCounterClockwise, ClockCounterClockwise } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 import { listTxns, restoreTxn, findDeletedLinked } from '../data/api.js';
@@ -9,6 +11,7 @@ import { describeTxn } from '../lib/describe.js';
 export default function Deleted() {
   const { jarName, money } = useStore();
   const toast = useToast();
+  const { t: tr } = useT();
   const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
@@ -19,7 +22,7 @@ export default function Deleted() {
     try {
       const r = await listTxns({ deleted: true, after: more ? cursor : null });
       setItems((p) => (more ? [...p, ...r.items] : r.items)); setCursor(r.last); setHasMore(r.hasMore);
-    } catch (e) { toast(e.message, 'err'); } finally { setLoading(false); }
+    } catch (e) { toast(errText(e, tr), 'err'); } finally { setLoading(false); }
   }
   useEffect(() => { load(false); /* eslint-disable-next-line */ }, []);
 
@@ -35,7 +38,7 @@ export default function Deleted() {
       const gone = new Set([t.id, ...(withLinked ? linked.map((l) => l.id) : [])]);
       setItems((p) => p.filter((x) => !gone.has(x.id)));
       toast(withLinked ? 'Bill aur uski entries restore ho gayi' : 'Restore ho gaya');
-    } catch (e) { toast(e.message, 'err'); }
+    } catch (e) { toast(errText(e, tr), 'err'); }
   }
   // describeTxn shows effect of non-deleted version
   const rows = items.map((t) => ({ t, d: describeTxn({ ...t, deleted: false }, { jarName, money }) }));

@@ -8,6 +8,12 @@ import en from '../locales/en.js';
 import hi from '../locales/hi.js';
 
 export const LANGS = ['en', 'hi'];
+// Page texts live in src/locales/pages/*.js, each file `export default { en: {...}, hi: {...} }` (merged here, so page owners never share a file).
+const pageFiles = import.meta.glob('../locales/pages/*.js', { eager: true });
+for (const m of Object.values(pageFiles)) {
+  Object.assign(en, m.default?.en || {});
+  Object.assign(hi, m.default?.hi || {});
+}
 export const MESSAGES = { en, hi };
 const LS_KEY = 'bluvia_lang';
 

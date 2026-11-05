@@ -492,6 +492,9 @@ describe('real api.js flows', () => {
     expect((await getDoc(doc(owner, 'audit', `${r.id}_1`))).data().by.uid).toBe(S1);
 
     // blocked operations
+    console.log('REC', JSON.stringify((await getDoc(doc(owner, 'transactions', rec.id))).data()));
+    console.log('RES', await api.updateTxn({ id: rec.id }, { amount: 900 }).catch((e) => e.code));
+    console.log('REC2', JSON.stringify((await getDoc(doc(owner, 'transactions', rec.id))).data()));
     await expect(api.updateTxn({ id: rec.id }, { amount: 900 })).rejects.toMatchObject({ code: 'permission-denied' });
     await expect(api.verifyReceipt({ id: rec.id })).rejects.toMatchObject({ code: 'permission-denied' });
     await expect(api.softDeleteTxn({ id: rec.id })).rejects.toMatchObject({ code: 'permission-denied' });

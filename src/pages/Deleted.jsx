@@ -28,7 +28,7 @@ export default function Deleted() {
       let withLinked = false;
       let linked = [];
       if (t.type === 'bill') {
-        linked = await findDeletedLinked(t.id);
+        linked = await findDeletedLinked(t.id, t.deletedAt);
         if (linked.length) withLinked = window.confirm(`Is bill ke saath bani ${linked.length} deposit/jar return entries bhi wapas lagani hain?`);
       }
       await restoreTxn(t, { withLinked });

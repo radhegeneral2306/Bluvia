@@ -45,4 +45,4 @@ export const canManageSettings = (profile) => isAdmin(profile);
 export const byLine = (t) => (t?.createdBy?.name ? t.createdBy.name : '');
 
 /** The few fields kept in the audit log for an entry. */
-export const AUDIT_FIELDS = ['type', 'billNo', 'partyId', 'partyName', 'dateKey', 'total', 'amount', 'qty', 'mode', 'reference', 'jarTypeId', 'discount', 'extraCharge', 'note', 'deleted', 'verified'];
+export const AUDIT_FIELDS = ['type', 'billNo', 'partyId', 'partyName', 'dateKey', 'total', 'amount', 'qty', 'mode', 'reference', 'jarTypeId', 'subTotal', 'linesSummary', 'discount', 'extraCharge', 'note', 'deleted', 'verified'];

@@ -9,9 +9,9 @@ export const TYPE_LABELS = {
 export const FIELD_LABELS = {
   type: 'Type', billNo: 'Bill no', partyId: 'Party', partyName: 'Party', dateKey: 'Date', total: 'Total', amount: 'Amount',
   qty: 'Qty', mode: 'Mode', reference: 'Reference', jarTypeId: 'Jar', discount: 'Discount', extraCharge: 'Extra charge',
-  note: 'Note', deleted: 'Deleted', verified: 'Verified',
+  note: 'Note', deleted: 'Deleted', verified: 'Verified', subTotal: 'Sub total', linesSummary: 'Items',
 };
-const MONEY_FIELDS = new Set(['total', 'amount', 'discount', 'extraCharge']);
+const MONEY_FIELDS = new Set(['total', 'amount', 'discount', 'extraCharge', 'subTotal']);
 
 export const actionLabel = (a) => ACTION_LABELS[a] || String(a || '');
 export const typeLabel = (t) => TYPE_LABELS[t] || String(t || '');

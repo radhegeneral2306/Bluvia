@@ -19,6 +19,10 @@ export function setActor(a) {
 }
 export const getActor = () => actor;
 
+/** Error with a stable .code so screens can show a translated message (src/lib/errors.js). */
+export function appErr(code, message) { const e = new Error(message); e.code = code; return e; }
+const ms = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis() : typeof t === 'number' ? t : null);
+
 export const tsFromKey = (key) => Timestamp.fromDate(dateFromKey(key));
 export const withId = (d) => ({ id: d.id, ...d.data() });
 
@@ -112,7 +116,16 @@ export async function createParty(data) {
   await commitSafe(b.commit());
   return ref.id;
 }
-export async function updateParty(id, oldP, data) {
+export async function updateParty(id, oldP0, data0) {
+  // re-read the party (when online) so a stale form on another device cannot apply the opening-balance change twice
+  let oldP = oldP0;
+  if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+    const snap = await getDoc(doc(db, 'parties', id));
+    addReads(1);
+    if (snap.exists()) oldP = withId(snap);
+  }
+  const data = { ...data0 };
+  for (const k of ['openingBalance', 'openingDeposit', 'openingJars']) if (data[k] === undefined && oldP[k] !== undefined) data[k] = oldP[k];
   const b = writeBatch(db);
   b.update(doc(db, 'parties', id), { ...data, updatedAt: serverTimestamp() }); // update() replaces nested maps (jarRates etc.)
   const e = openingDelta(oldP, data);
@@ -139,6 +152,8 @@ const base = (t) => ({
 });
 
 // ---------- audit log ----------
+const linesText = (lines) => (Array.isArray(lines) ? lines.map((l) => `${l.itemName || ''} x${l.qty ?? ''} = ${((l.amount || 0) / 100).toFixed(2)}`).join('; ') : undefined);
+const withSummary = (t) => ({ ...t, linesSummary: linesText(t.lines) });
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o && o[k] !== undefined && typeof o[k] !== 'function').map((k) => [k, o[k]]));
 /**
  * Adds the audit record for an edit / delete / restore to the SAME batch and returns the fields to merge into the entry
@@ -146,12 +161,13 @@ const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o && o[k] !== un
  */
 function auditStep(b, oldT, newT, action) {
   const seq = (oldT.auditSeq || 0) + 1;
-  const changed = AUDIT_FIELDS.filter((k) => JSON.stringify(oldT[k] ?? null) !== JSON.stringify(newT[k] ?? null));
+  const o2 = withSummary(oldT), n2 = withSummary(newT);
+  const changed = AUDIT_FIELDS.filter((k) => JSON.stringify(o2[k] ?? null) !== JSON.stringify(n2[k] ?? null));
   const keys = action === 'edit' ? changed : ['deleted'];
   const ctx = pick(newT, ['type', 'billNo', 'partyName', 'dateKey', 'total', 'amount', 'qty', 'mode']);
   b.set(doc(db, 'audit', `${oldT.id}_${seq}`), {
     txnId: oldT.id, action, at: serverTimestamp(), by: actor ? { ...actor } : { uid: 'unknown', name: 'Unknown' },
-    partyId: oldT.partyId || '', type: oldT.type || '', before: pick(oldT, keys), after: pick(newT, keys), ctx,
+    partyId: oldT.partyId || '', type: oldT.type || '', before: pick(o2, keys), after: pick(n2, keys), ctx,
   });
   return { auditSeq: seq };
 }
@@ -170,7 +186,7 @@ export async function createEntry(t) {
 function writeDeltaOnly(b, plan) { writePlan(b, plan); }
 
 /** Bill: needs internet (bill number via transaction on settings/main). Saves optional deposit entry too. */
-export async function createBill(input) {
+async function createBillOnce(input) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     const err = new Error('Bill banane ke liye internet chahiye (bill number server se aata hai). Receipt / jar / deposit offline save ho sakte hain.');
     err.code = 'OFFLINE_BILL';
@@ -236,14 +252,30 @@ export async function createBill(input) {
   }
 }
 
+/**
+ * Bill with a retry: when several phones save a bill at the same moment the bill-number counter moves under us and
+ * the server answers permission-denied (not "aborted"), which the SDK does not retry. We retry a few times with a short random wait.
+ */
+export async function createBill(input) {
+  let last;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    try { return await createBillOnce(input); } catch (e) {
+      last = e;
+      if (e?.code !== 'permission-denied') throw e;
+      await new Promise((r) => setTimeout(r, 40 + Math.random() * 160 * (attempt + 1)));
+    }
+  }
+  throw last;
+}
+
 /** Re-read the entry from the server (when online) so a stale form can never double-apply a delta. */
 async function fresh(oldT, { allowDeleted = false } = {}) {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return oldT;
   const snap = await getDoc(doc(db, 'transactions', oldT.id));
   addReads(1);
-  if (!snap.exists()) throw new Error('Yeh entry ab exist nahi karti.');
+  if (!snap.exists()) throw appErr('ENTRY_GONE', 'Yeh entry ab exist nahi karti.');
   const cur = withId(snap);
-  if (!allowDeleted && cur.deleted) throw new Error('Yeh entry kahin aur se delete ho chuki hai. Page refresh karo.');
+  if (!allowDeleted && cur.deleted) throw appErr('ENTRY_DELETED', 'Yeh entry kahin aur se delete ho chuki hai. Page refresh karo.');
   return cur;
 }
 
@@ -284,7 +316,7 @@ export async function softDeleteTxn(oldT0, { withLinked = false } = {}) {
 /** Owner marks a staff-entered receipt as checked against the bank statement. No balance change; logged in the audit trail. */
 export async function verifyReceipt(oldT0) {
   const oldT = await fresh(oldT0);
-  if (oldT.type !== 'receipt') throw new Error('Sirf receipt verify hoti hai.');
+  if (oldT.type !== 'receipt') throw appErr('NOT_RECEIPT', 'Sirf receipt verify hoti hai.');
   const b = writeBatch(db);
   b.update(doc(db, 'transactions', oldT.id), {
     verified: true, verifiedBy: actor ? { ...actor } : null, verifiedAt: serverTimestamp(), updatedAt: serverTimestamp(),
@@ -293,20 +325,23 @@ export async function verifyReceipt(oldT0) {
   return commitSafe(b.commit());
 }
 /** Entries made together with a bill (deposit taken, jars returned) that are currently deleted. */
-export async function findDeletedLinked(billId) {
+export async function findDeletedLinked(billId, billDeletedAt = null) {
   const snap = await qDocs(query(collection(db, 'transactions'), where('linkedBillId', '==', billId), where('deleted', '==', true)));
-  return snap.docs.map(withId);
+  const all = snap.docs.map(withId);
+  const cut = ms(billDeletedAt);
+  // only entries that were deleted together with the bill (not ones someone deleted on purpose earlier)
+  return cut === null ? all : all.filter((l) => { const t = ms(l.deletedAt); return t === null || t >= cut - 2000; });
 }
 
 /** Restore. With { withLinked: true } the deposit/jar-return entries that belong to the same bill come back too (one batch). */
 export async function restoreTxn(oldT0, { withLinked = false } = {}) {
   const oldT = await fresh(oldT0, { allowDeleted: true });
-  if (!oldT.deleted) throw new Error('Yeh entry pehle se active hai.');
+  if (!oldT.deleted) throw appErr('ENTRY_ACTIVE', 'Yeh entry pehle se active hai.');
   const b = writeBatch(db);
   const pairs = [[{ ...oldT, deleted: true }, { ...oldT, deleted: false }]];
   b.update(doc(db, 'transactions', oldT.id), { deleted: false, updatedAt: serverTimestamp(), ...auditStep(b, oldT, { ...oldT, deleted: false }, 'restore') });
   if (withLinked && oldT.type === 'bill') {
-    for (const l of await findDeletedLinked(oldT.id)) {
+    for (const l of await findDeletedLinked(oldT.id, oldT.deletedAt)) {
       b.update(doc(db, 'transactions', l.id), { deleted: false, updatedAt: serverTimestamp(), ...auditStep(b, l, { ...l, deleted: false }, 'restore') });
       pairs.push([{ ...l, deleted: true }, { ...l, deleted: false }]);
     }

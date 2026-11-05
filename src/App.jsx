@@ -25,6 +25,7 @@ import Recalc from './pages/Recalc.jsx';
 import Deleted from './pages/Deleted.jsx';
 import More from './pages/More.jsx';
 import Staff from './pages/Staff.jsx';
+import QuickAddParty from './pages/QuickAddParty.jsx';
 import Changes from './pages/Changes.jsx';
 
 const MapView = lazy(() => import('./pages/MapView.jsx')); // Leaflet is only downloaded when the map is opened
@@ -116,6 +117,7 @@ function Gate() {
         <Route path="/backup" element={isAdmin ? <Backup /> : <Navigate to="/" replace />} />
         <Route path="/recalc" element={isAdmin ? <Recalc /> : <Navigate to="/" replace />} />
         <Route path="/deleted" element={isAdmin ? <Deleted /> : <Navigate to="/" replace />} />
+        <Route path="/quick-add" element={isAdmin ? <QuickAddParty /> : <Navigate to="/" replace />} />
         <Route path="/staff" element={isAdmin ? <Staff /> : <Navigate to="/" replace />} />
         <Route path="/changes" element={isAdmin ? <Changes /> : <Navigate to="/" replace />} />
         <Route path="/more" element={<More />} />

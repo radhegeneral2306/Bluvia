@@ -281,6 +281,17 @@ export async function softDeleteTxn(oldT0, { withLinked = false } = {}) {
   writePlan(b, planChanges(pairs));
   return commitSafe(b.commit());
 }
+/** Owner marks a staff-entered receipt as checked against the bank statement. No balance change; logged in the audit trail. */
+export async function verifyReceipt(oldT0) {
+  const oldT = await fresh(oldT0);
+  if (oldT.type !== 'receipt') throw new Error('Sirf receipt verify hoti hai.');
+  const b = writeBatch(db);
+  b.update(doc(db, 'transactions', oldT.id), {
+    verified: true, verifiedBy: actor ? { ...actor } : null, verifiedAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    ...auditStep(b, oldT, { ...oldT, verified: true }, 'edit'),
+  });
+  return commitSafe(b.commit());
+}
 /** Entries made together with a bill (deposit taken, jars returned) that are currently deleted. */
 export async function findDeletedLinked(billId) {
   const snap = await qDocs(query(collection(db, 'transactions'), where('linkedBillId', '==', billId), where('deleted', '==', true)));

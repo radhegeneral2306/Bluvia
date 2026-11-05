@@ -57,7 +57,8 @@ const denied = async (p) => {
 };
 const allowed = async (p) => { await p; };
 
-const me = (uid, name) => ({ uid, name });
+const NAMES = { [S1]: 'Staff One', [S2]: 'Staff Two', [BLOCKED]: 'Blocked' };
+const me = (uid, name) => ({ uid, name: NAMES[uid] || name });
 const P = 'party1';
 const J = 'jar20';
 const DAY = '2026-03-01';
@@ -214,6 +215,12 @@ describe('transaction creation', () => {
     const noBy = billDoc(S1); delete noBy.createdBy;
     await denied(setDoc(doc(s1, 'transactions', newId('c')), noBy));
     await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1, { createdBy: { uid: S1 } })));
+  });
+  it('createdAt must be the server time (no future date to stretch the 1 hour edit window) and the name must be the real one', async () => {
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1, { createdAt: Timestamp.fromMillis(Date.now() + 365 * 24 * 3600 * 1000) })));
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1, { createdAt: hoursAgo(5) })));
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1, { createdBy: { uid: S1, name: 'Owner' } })));
+    await allowed(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1)));
   });
   it('staff cannot create depositRefund / depositAdjust / adjustment', async () => {
     for (const type of ['depositRefund', 'depositAdjust', 'adjustment']) {

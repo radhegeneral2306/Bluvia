@@ -127,6 +127,8 @@ service cloud.firestore {
     function staffCreateOk() {
       return d().type in ['bill', 'receipt', 'jarReturn', 'jarGiven', 'depositTaken']
         && 'createdBy' in d() && createdByOk() && d().createdBy.uid == request.auth.uid
+        && d().createdBy.name == userDoc().name
+        && d().createdAt == request.time && d().updatedAt == request.time
         && d().deleted == false
         && (d().type != 'receipt' || d().verified == false)
         && !('auditSeq' in d());

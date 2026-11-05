@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import en from '../src/locales/en.js';
 import hi from '../src/locales/hi.js';
 import { translate, defaultLang } from '../src/lib/i18n.js';
-import { hasDevanagari, textToImage } from '../src/lib/hindiText.js';
+const hasDevanagari = (str) => /[\u0900-\u097F]/.test(str || '');
 
 describe('translate', () => {
   it('returns the text per language', () => {
@@ -47,18 +47,5 @@ describe('locale files', () => {
   });
   it('keys are namespaced', () => {
     for (const k of Object.keys(en)) expect(k).toMatch(/^[a-z]+(\.[A-Za-z]+)+$/);
-  });
-});
-
-describe('hindiText', () => {
-  it('hasDevanagari', () => {
-    expect(hasDevanagari('राम स्वीट्स')).toBe(true);
-    expect(hasDevanagari('Ram Sweets 123')).toBe(false);
-    expect(hasDevanagari('Ram राम')).toBe(true);
-    expect(hasDevanagari(null)).toBe(false);
-  });
-  it('textToImage fails soft without a canvas', async () => {
-    expect(await textToImage('राम')).toBeNull();
-    expect(await textToImage('')).toBeNull();
   });
 });

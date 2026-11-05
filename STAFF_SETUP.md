@@ -6,6 +6,17 @@ Zaroori baat: free Firebase plan mein app ke andar se login account nahi ban sak
 
 ---
 
+## Pehle ye karo: rules aur app ka sahi order - Easy
+
+Staff login naye security rules ke saath aata hai. Order galat hua to aapko khud "Access denied" dikh sakta hai.
+
+1. **Pehle rules publish karo.** Firebase console, Firestore Database, Rules mein naya `firestore.rules` paste karo. Usme `OWNER_UID` ki jagah apna asli UID likhna zaroori hai (quotes mat hatana). Phir **Publish**.
+2. **Phir naya app version aane do** (Cloudflare apne aap deploy karta hai). App mein "Naya version available hai" aaye to **Update karo** dabao.
+3. **Aap ek baar naye app mein login karo, internet chalu rakhke.** Isse aapka owner record apne aap ban jata hai.
+4. Uske baad hi More, Staff se staff jodo.
+
+---
+
 ## A. Staff ka login banao (Firebase console) - Easy
 
 1. Browser mein https://console.firebase.google.com kholo aur apne Google account se login karo.
@@ -58,7 +69,7 @@ Free plan mein app se password reset nahi hota. Console mein hath se karo:
 
 Do taale lagao, dono zaroori hain:
 
-1. App mein: **More, Staff**, us staff ki row par **Block** dabao, confirm karo. Woh agle action par logout ho jayega aur kuch dekh nahi payega.
+1. App mein: **More, Staff**, us staff ki row par **Block** dabao, confirm karo. Us staff ko "Account band hai" screen dikhegi (agle action ya app dobara kholne par) aur woh kuch dekh ya likh nahi payega.
 2. Firebase console mein: **Authentication, Users**, staff ki row ke teen dots, **Disable account**. Yeh doosra taala hai, taaki login hi na chale.
 
 Wapas chalu karna ho to dono jagah ulta karo: app mein **Unblock**, console mein **Enable account**.

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useStore } from '../data/store.jsx';
+import { useT } from '../lib/i18n.js';
 import { byLine, canModifyTxn, editMinutesLeft } from '../lib/roles.js';
 import { Receipt, HandCoins, ArrowUUpLeft, ArrowUDownRight, Bank, ArrowFatLinesDown, ArrowsLeftRight, SlidersHorizontal, PencilSimple } from '@phosphor-icons/react';
 
@@ -20,6 +21,7 @@ const ICONS = {
 export default function TxnRow({ row, money, showParty, actions }) {
   const { t, d } = row;
   const { profile, user, isAdmin } = useStore();
+  const { t: tr } = useT();
   const by = byLine(t);
   const left = !isAdmin && canModifyTxn(profile, user?.uid, t) ? editMinutesLeft(profile, t) : null;
   const amt = d.outstanding;
@@ -35,16 +37,16 @@ export default function TxnRow({ row, money, showParty, actions }) {
           {d.note && <div className="text-xs text-slate-500 italic break-words">{d.note}</div>}
           {(by || t.verified === false || left !== null) && (
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-              {by && <span>by {by}</span>}
-              {t.type === 'receipt' && t.verified === false && <span className="rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 font-semibold">Unverified</span>}
-              {left !== null && <span>Edit {left} min baaki</span>}
+              {by && <span>{tr('txn.by', { name: by })}</span>}
+              {t.type === 'receipt' && t.verified === false && <span className="rounded-full bg-amber-100 text-amber-800 px-2 py-0.5 font-semibold">{tr('txn.unverified')}</span>}
+              {left !== null && <span>{tr('txn.editLeft', { n: left })}</span>}
             </div>
           )}
         </div>
         <div className="text-right shrink-0 max-w-[40%] break-words">
           {amt !== 0 && <div className={`font-semibold num ${amt > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{amt > 0 ? '+' : '−'}{money(Math.abs(amt))}</div>}
           {amt === 0 && t.amount > 0 && <div className="font-semibold num text-slate-700">{money(t.amount)}</div>}
-          {row.balance !== undefined && <div className="text-xs text-slate-500 num">Bal {money(row.balance)}</div>}
+          {row.balance !== undefined && <div className="text-xs text-slate-500 num">{tr('txn.bal', { amt: money(row.balance) })}</div>}
         </div>
       </div>
       {actions && <div className="flex flex-wrap gap-2 mt-2 justify-end">{actions(row)}</div>}
@@ -53,5 +55,6 @@ export default function TxnRow({ row, money, showParty, actions }) {
 }
 
 export function EditLink({ t }) {
-  return <Link to={editPath(t)} className="btn btn-sm"><PencilSimple size={18} />Edit</Link>;
+  const { t: tr } = useT();
+  return <Link to={editPath(t)} className="btn btn-sm"><PencilSimple size={18} />{tr('common.edit')}</Link>;
 }

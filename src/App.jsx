@@ -6,6 +6,7 @@ import { StoreProvider, useStore } from './data/store.jsx';
 import { ToastProvider, Spinner } from './components/ui.jsx';
 import Layout from './components/Layout.jsx';
 import { signOut } from 'firebase/auth';
+import { useT } from './lib/i18n.js';
 import { configured, auth } from './lib/firebase.js';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -31,13 +32,11 @@ import Changes from './pages/Changes.jsx';
 const MapView = lazy(() => import('./pages/MapView.jsx')); // Leaflet is only downloaded when the map is opened
 
 function ConfigMissing() {
+  const { t } = useT();
   return (
     <div className="p-6 max-w-lg mx-auto">
-      <h1 className="text-xl font-semibold mb-2">Firebase config missing</h1>
-      <p className="text-sm text-slate-600">
-        App ko Firebase ki config values nahi mili. <code>.env</code> file (ya Cloudflare Pages ke Variables) mein
-        <code> VITE_FIREBASE_*</code> values daalo. Steps <b>SETUP.md</b> mein hain.
-      </p>
+      <h1 className="text-xl font-semibold mb-2">{t('app.configMissing.title')}</h1>
+      <p className="text-sm text-slate-600">{t('app.configMissing.body')}</p>
     </div>
   );
 }
@@ -47,24 +46,26 @@ const SwCtx = createContext({ needRefresh: false, update: () => {} });
 
 function UpdateBar() {
   const { needRefresh, update } = useContext(SwCtx);
+  const { t } = useT();
   if (!needRefresh) return null;
   return (
     <div className="bg-brand-600 text-white text-sm px-4 py-2 flex items-center justify-center gap-3" role="status">
       <ArrowsClockwise size={18} weight="bold" className="shrink-0" />
-      Naya version available hai
-      <button className="btn btn-sm !min-h-[36px] !bg-white !text-[#01616a] !border-white" onClick={update}>Update karo</button>
+      {t('app.update.text')}
+      <button className="btn btn-sm !min-h-[36px] !bg-white !text-[#01616a] !border-white" onClick={update}>{t('app.update.btn')}</button>
     </div>
   );
 }
 
 function Banners() {
   const { online } = useStore();
+  const { t } = useT();
   return (
     <>
       {!online && (
         <div className="bg-[#92400e] text-white text-sm font-medium flex items-center justify-center gap-2 py-2 px-4" role="status">
           <CloudSlash size={18} weight="bold" className="shrink-0" />
-          <span>Offline hain. Receipt, jar aur deposit save honge aur net aane par sync honge. Bill ke liye internet chahiye.</span>
+          <span>{t('app.offline')}</span>
         </div>
       )}
       <UpdateBar />
@@ -74,33 +75,34 @@ function Banners() {
 
 function Gate() {
   const { user, ready, accessError, blocked, isAdmin } = useStore();
-  if (user === undefined) return <div className="p-4 max-w-2xl mx-auto"><Spinner text="Starting" rows={3} /></div>;
+  const { t } = useT();
+  if (user === undefined) return <div className="p-4 max-w-2xl mx-auto"><Spinner text={t('app.starting')} rows={3} /></div>;
   if (!user) return <><UpdateBar /><Login /></>;
   if (blocked) {
     return (
       <div className="p-6 max-w-lg mx-auto">
-        <h1 className="text-xl font-semibold mb-2 text-red-700">Account band hai</h1>
-        <p className="text-sm text-slate-700">Aapka login band kar diya gaya hai. Owner se baat karo.</p>
-        <button className="btn btn-secondary mt-4" onClick={() => signOut(auth)}>Logout</button>
+        <h1 className="text-xl font-semibold mb-2 text-red-700">{t('app.blocked.title')}</h1>
+        <p className="text-sm text-slate-700">{t('app.blocked.body')}</p>
+        <button className="btn btn-secondary mt-4" onClick={() => signOut(auth)}>{t('common.logout')}</button>
       </div>
     );
   }
   if (accessError) {
     return (
       <div className="p-6 max-w-lg mx-auto">
-        <h1 className="text-xl font-semibold mb-2 text-red-700">Access denied</h1>
-        <p className="text-sm text-slate-700">Is login ko access nahi mila. Agar aap owner ho: SETUP.md ka "UID kaise nikalein" step dekho aur <code>firestore.rules</code> mein OWNER_UID badal kar rules dobara publish karo. Agar aap staff ho: owner se kaho ki Staff screen mein aapka UID jod de.</p>
-        <p className="text-sm mt-2 text-slate-700">Aapka UID: <code className="break-all num">{user.uid}</code></p>
+        <h1 className="text-xl font-semibold mb-2 text-red-700">{t('app.denied.title')}</h1>
+        <p className="text-sm text-slate-700">{t('app.denied.body')}</p>
+        <p className="text-sm mt-2 text-slate-700">{t('app.denied.uid')} <code className="break-all num">{user.uid}</code></p>
       </div>
     );
   }
-  if (!ready) return <div className="p-4 max-w-2xl mx-auto"><Spinner text="Data load ho raha hai" rows={5} /></div>;
+  if (!ready) return <div className="p-4 max-w-2xl mx-auto"><Spinner text={t('app.loading')} rows={5} /></div>;
   return (
     <Routes>
       <Route element={<Layout banner={<Banners />} />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/parties" element={<Parties />} />
-        <Route path="/map" element={<Suspense fallback={<div className="p-4 max-w-2xl mx-auto"><Spinner text="Map khul raha hai" rows={3} /></div>}><MapView /></Suspense>} />
+        <Route path="/map" element={<Suspense fallback={<div className="p-4 max-w-2xl mx-auto"><Spinner text={t('app.mapLoading')} rows={3} /></div>}><MapView /></Suspense>} />
         <Route path="/party/new" element={isAdmin ? <PartyForm /> : <Navigate to="/" replace />} />
         <Route path="/party/:id" element={<PartyDetail />} />
         <Route path="/party/:id/edit" element={isAdmin ? <PartyForm /> : <Navigate to="/" replace />} />

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, Warning, WarningCircle, X, Tray } from '@phosphor-icons/react';
 import { fromPaise, toPaise } from '../lib/money.js';
+import { useT } from '../lib/i18n.js';
 
 // ---------- toast ----------
 const ToastCtx = createContext(() => {});
@@ -40,11 +41,12 @@ export function ToastProvider({ children }) {
 // ---------- layout bits ----------
 export function Page({ title, back, actions, children, narrow = true }) {
   const nav = useNavigate();
+  const { t } = useT();
   return (
     <div className={`${narrow ? 'max-w-2xl' : 'max-w-5xl'} mx-auto w-full`}>
       <header className="sticky top-0 z-20 bg-slate-50/90 backdrop-blur-md px-4 pt-3 pb-3 flex items-center gap-2">
         {back && (
-          <button className="btn btn-ghost !min-h-[44px] !w-11 !px-0 -ml-2 rounded-full" onClick={() => (back === true ? nav(-1) : nav(back))} aria-label="Wapas">
+          <button className="btn btn-ghost !min-h-[44px] !w-11 !px-0 -ml-2 rounded-full" onClick={() => (back === true ? nav(-1) : nav(back))} aria-label={t('ui.back')}>
             <ArrowLeft size={22} />
           </button>
         )}
@@ -75,7 +77,9 @@ export function Field({ label, hint, children }) {
 }
 
 /** Skeleton rows that match the shape of list cards (used while data loads). */
-export function Spinner({ text = 'Loading', rows = 4 }) {
+export function Spinner({ text, rows = 4 }) {
+  const { t } = useT();
+  text = text || t('ui.loading');
   return (
     <div className="space-y-2.5 py-1" role="status" aria-label={text}>
       {Array.from({ length: rows }).map((_, i) => <div key={i} className="skeleton h-[68px] rounded-2xl" />)}
@@ -105,6 +109,7 @@ const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:n
 
 /** Accessible dialog: focus moves in, Tab cycles inside, Esc closes, focus returns to the opener. */
 export function Modal({ open, onClose, title, children }) {
+  const { t } = useT();
   const panel = useRef(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose; // keep the latest onClose without re-running the focus effect
@@ -142,7 +147,7 @@ export function Modal({ open, onClose, title, children }) {
         <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mb-3 sm:hidden" />
         <div className="flex items-center mb-3">
           <h2 id={titleId} className="font-semibold text-lg flex-1">{title}</h2>
-          <button className="btn btn-ghost btn-sm !w-10 !px-0 rounded-full" onClick={onClose} aria-label="Band karo"><X size={20} /></button>
+          <button className="btn btn-ghost btn-sm !w-10 !px-0 rounded-full" onClick={onClose} aria-label={t('ui.close')}><X size={20} /></button>
         </div>
         {children}
       </div>

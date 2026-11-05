@@ -1,9 +1,11 @@
 import { useStore } from '../data/store.jsx';
+import { useT } from '../lib/i18n.js';
 import { areaList, strayAreas, areaCounts, filterByArea, NO_AREA, ALL_AREAS } from '../lib/areas.js';
 
 /** Row of area filter chips. value: ALL_AREAS ('') | NO_AREA | an area name. Hidden when there is nothing to filter by. */
 export default function AreaFilter({ parties, value, onChange }) {
   const { settings } = useStore();
+  const { t } = useT();
   const list = areaList(settings);
   const stray = strayAreas(list, parties);
   const none = areaCounts(parties).none;
@@ -11,13 +13,13 @@ export default function AreaFilter({ parties, value, onChange }) {
   if (!areas.length) return null; // no area is set on any party and the admin list is empty
 
   const chips = [
-    { key: 'all', value: ALL_AREAS, label: 'Sab', count: parties.length },
+    { key: 'all', value: ALL_AREAS, label: t('areafilter.all'), count: parties.length },
     ...areas.map((a) => ({ key: `a:${a}`, value: a, label: a, count: filterByArea(parties, a).length })),
-    ...(none > 0 ? [{ key: 'none', value: NO_AREA, label: 'Bina area', count: none }] : []),
+    ...(none > 0 ? [{ key: 'none', value: NO_AREA, label: t('areafilter.none'), count: none }] : []),
   ];
 
   return (
-    <div role="group" aria-label="Area filter" className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1">
+    <div role="group" aria-label={t('areafilter.label')} className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1">
       {chips.map((c) => {
         const on = value === c.value;
         return (

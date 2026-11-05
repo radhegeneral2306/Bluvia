@@ -6,10 +6,12 @@ import { buildBillPdf } from '../lib/pdf.js';
 import { sharePdf, shareToWhatsApp, billText, waLink } from '../lib/share.js';
 import { qrAmountFor } from '../lib/upi.js';
 import UpiQrSheet from './UpiQrSheet.jsx';
+import { useT } from '../lib/i18n.js';
 
 export default function ShareBillModal({ bill, onClose }) {
   const { settings, partyMap, jarName, jarTypes, money } = useStore();
   const toast = useToast();
+  const { t: tr } = useT();
   const [layout, setLayout] = useState(() => { try { return localStorage.getItem('bluvia_pdf_layout') === 'thermal' ? 'thermal' : 'invoice'; } catch { return 'invoice'; } });
   const [busy, setBusy] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -22,33 +24,33 @@ export default function ShareBillModal({ bill, onClose }) {
     try {
       const doc = await buildBillPdf({ bill, party, settings, jarName, jarTypes, layout });
       const r = await sharePdf(doc, `${bill.billNo || 'bill'}.pdf`, `Bill ${bill.billNo}`);
-      if (r === 'downloaded') toast('PDF download ho gaya');
-    } catch (e) { toast(`PDF nahi bana: ${e.message}`, 'err'); } finally { setBusy(false); }
+      if (r === 'downloaded') toast(tr('share.pdfDownloaded'));
+    } catch (e) { toast(tr('share.pdfFail', { msg: e.message }), 'err'); } finally { setBusy(false); }
   }
   async function whatsapp() {
     setBusy(true);
     try {
       const doc = await buildBillPdf({ bill, party, settings, jarName, jarTypes, layout });
       const r = await shareToWhatsApp(doc, `${bill.billNo || 'bill'}.pdf`, { text, phone: party?.phone, countryCode: settings.countryCode, title: `Bill ${bill.billNo}` });
-      if (r === 'downloaded') toast('PDF download ho gaya, WhatsApp mein attach karo');
-    } catch (e) { toast(`PDF nahi bana: ${e.message}`, 'err'); } finally { setBusy(false); }
+      if (r === 'downloaded') toast(tr('share.pdfDownloadedWa'));
+    } catch (e) { toast(tr('share.pdfFail', { msg: e.message }), 'err'); } finally { setBusy(false); }
   }
   const text = billText({ bill, party, settings, jarName, money });
   return (
-    <Modal open onClose={onClose} title={`Bill ${bill.billNo || ''} share karo`}>
+    <Modal open onClose={onClose} title={tr('share.title', { no: bill.billNo || '' })}>
       <div className="space-y-3">
-        <Tabs tabs={[['invoice', 'Invoice (full page)'], ['thermal', 'Thermal (narrow)']]} value={layout} onChange={pick} />
+        <Tabs tabs={[['invoice', tr('share.layoutInvoice')], ['thermal', tr('share.layoutThermal')]]} value={layout} onChange={pick} />
         <button className="btn btn-primary w-full !min-h-[56px] text-base" disabled={busy} onClick={whatsapp}>
-          <WhatsappLogo size={24} />{busy ? 'Ban raha hai…' : 'WhatsApp par bhejo'}
+          <WhatsappLogo size={24} />{busy ? tr('share.working') : tr('share.whatsapp')}
         </button>
         <button className="btn w-full" disabled={busy} onClick={pdf}>
-          <FilePdf size={20} />PDF share / download
+          <FilePdf size={20} />{tr('share.pdf')}
         </button>
         <a className={`btn w-full ${party?.phone ? '' : 'opacity-50 pointer-events-none'}`} target="_blank" rel="noreferrer"
-          href={waLink(party?.phone, text, settings.countryCode)}><WhatsappLogo size={20} />WhatsApp text bhejo</a>
-        {!party?.phone && <p className="text-xs text-amber-700">Party ka phone number nahi hai. Party edit karke daalo.</p>}
-        <button className="btn w-full" onClick={() => setQrOpen(true)}><QrCode size={20} />UPI QR dikhao</button>
-        <button className="btn btn-ghost w-full" onClick={onClose}><Check size={20} weight="bold" />Done</button>
+          href={waLink(party?.phone, text, settings.countryCode)}><WhatsappLogo size={20} />{tr('share.waText')}</a>
+        {!party?.phone && <p className="text-xs text-amber-700">{tr('share.noPhone')}</p>}
+        <button className="btn w-full" onClick={() => setQrOpen(true)}><QrCode size={20} />{tr('share.upiQr')}</button>
+        <button className="btn btn-ghost w-full" onClick={onClose}><Check size={20} weight="bold" />{tr('common.done')}</button>
       </div>
       <UpiQrSheet open={qrOpen} onClose={() => setQrOpen(false)} partyName={party?.name || bill.partyName || ''} billNo={bill.billNo || ''}
         suggestedPaise={qrAmountFor(settings, { billTotal: bill.total, due: bill.newOutstanding ?? ((bill.prevOutstanding || 0) + (bill.total || 0)) })} />

@@ -27,20 +27,18 @@ function dbFor(uid) {
   return db;
 }
 
-// api.js reads db from ../lib/firebase.js; globalThis.__IDENT says which identity this module instance uses
-vi.mock('../../src/lib/firebase.js', async () => {
-  const { initializeApp: init } = await import('firebase/app');
-  const { getFirestore: gf, connectFirestoreEmulator: cfe } = await import('firebase/firestore');
-  const port = Number(process.env.FS_EMULATOR_PORT || 8080);
-  const project = process.env.FS_EMULATOR_PROJECT || process.env.GCLOUD_PROJECT || 'demo-bluvia-g';
-  const uid = globalThis.__IDENT;
-  const app = init({ projectId: project, apiKey: 'fake', appId: 'fake' }, `api-${uid}-${Math.random()}`);
-  const db = gf(app);
-  cfe(db, '127.0.0.1', port, { mockUserToken: { sub: uid } });
-  return { db, auth: null, app, configured: true };
-});
+// api.js reads db from ../lib/firebase.js; it is re-mocked per identity
+// vi.doMock again for every identity, because a mock factory result is cached until it is re-registered
+function mockFirebaseFor(uid) {
+  vi.doMock('../../src/lib/firebase.js', () => {
+    const app = initializeApp({ projectId: PROJECT, apiKey: 'fake', appId: 'fake' }, `api-${uid}-${appCount++}`);
+    const db = getFirestore(app);
+    connectFirestoreEmulator(db, '127.0.0.1', PORT, { mockUserToken: { sub: uid } });
+    return { db, auth: null, app, configured: true };
+  });
+}
 async function loadApi(uid) {
-  globalThis.__IDENT = uid;
+  mockFirebaseFor(uid);
   vi.resetModules();
   return import('../../src/data/api.js');
 }
@@ -446,7 +444,6 @@ describe('full bill transaction (same shape as api.createBill)', () => {
 });
 
 describe('real api.js flows', () => {
-  const clean = () => ({ id: undefined });
   it('owner: createBill, updateTxn, softDelete, restore, verifyReceipt write valid audit records', async () => {
     const api = await loadApi(OWNER);
     api.setActor({ uid: OWNER, name: 'Owner', role: 'admin' });
@@ -464,7 +461,6 @@ describe('real api.js flows', () => {
     const rec = await api.createEntry({ type: 'receipt', partyId: pid, partyName: 'Api Party', dateKey: DAY, amount: 100, mode: 'UPI', reference: '', note: '' });
     expect((await getDoc(doc(owner, 'transactions', rec.id))).data().verified).toBe(true);
     await api.verifyReceipt({ id: rec.id });
-    void clean;
   });
 
   it('staff: createBill, createEntry, edit, delete work; restore, receipt edit, party and verify are blocked', async () => {
@@ -492,9 +488,6 @@ describe('real api.js flows', () => {
     expect((await getDoc(doc(owner, 'audit', `${r.id}_1`))).data().by.uid).toBe(S1);
 
     // blocked operations
-    console.log('REC', JSON.stringify((await getDoc(doc(owner, 'transactions', rec.id))).data()));
-    console.log('RES', await api.updateTxn({ id: rec.id }, { amount: 900 }).catch((e) => e.code));
-    console.log('REC2', JSON.stringify((await getDoc(doc(owner, 'transactions', rec.id))).data()));
     await expect(api.updateTxn({ id: rec.id }, { amount: 900 })).rejects.toMatchObject({ code: 'permission-denied' });
     await expect(api.verifyReceipt({ id: rec.id })).rejects.toMatchObject({ code: 'permission-denied' });
     await expect(api.softDeleteTxn({ id: rec.id })).rejects.toMatchObject({ code: 'permission-denied' });

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ShareNetwork, FileXls, CaretUp, CaretDown, Drop } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
+import { useT } from '../lib/i18n.js';
 import { Page, Empty, useToast } from '../components/ui.jsx';
 import { shareText } from '../lib/share.js';
 import { fromPaise } from '../lib/money.js';
@@ -10,10 +11,11 @@ import { areaOf, filterByArea, ALL_AREAS, NO_AREA } from '../lib/areas.js';
 
 export default function JarReport() {
   const { parties, jarTypes, money, settings } = useStore();
+  const { t } = useT();
   const toast = useToast();
   const [sort, setSort] = useState({ key: 'name', dir: 1 });
   const [area, setArea] = useState(ALL_AREAS);
-  const areaLabel = area === NO_AREA ? 'Bina area' : area;
+  const areaLabel = area === NO_AREA ? t('partyrow.noArea') : area;
   const types = jarTypes.filter((j) => j.active !== false || parties.some((p) => (p.jarBalance || {})[j.id]));
 
   const rows = useMemo(() => {
@@ -38,32 +40,32 @@ export default function JarReport() {
   );
 
   const text = () => {
-    const L = [`*${settings.businessName}: Jar Report${area ? ` (${areaLabel})` : ''}*`, ''];
-    for (const r of rows) L.push(`${r.name}${areaOf(r.p) ? ` (${areaOf(r.p)})` : ''}: ${types.map((j) => `${(r.p.jarBalance || {})[j.id] || 0} ${j.name}`).join(', ')} | Dep ${money(r.deposit)}`);
-    L.push('', `*Total*: ${types.map((j) => `${totals.by[j.id] || 0} ${j.name}`).join(', ')} | Dep ${money(totals.deposit)}`);
+    const L = [`*${settings.businessName}: ${t('jarrep.title')}${area ? ` (${areaLabel})` : ''}*`, ''];
+    for (const r of rows) L.push(`${r.name}${areaOf(r.p) ? ` (${areaOf(r.p)})` : ''}: ${types.map((j) => `${(r.p.jarBalance || {})[j.id] || 0} ${j.name}`).join(', ')} | ${t('jarrep.dep', { amount: money(r.deposit) })}`);
+    L.push('', `*${t('jarrep.total')}*: ${types.map((j) => `${totals.by[j.id] || 0} ${j.name}`).join(', ')} | ${t('jarrep.dep', { amount: money(totals.deposit) })}`);
     return L.join('\n');
   };
   async function excel() {
     const XLSX = await import('xlsx');
-    const aoa = [['Party', 'Area', ...types.map((j) => j.name), 'Total jars', 'Deposit'],
+    const aoa = [[t('jarrep.col.party'), t('jarrep.col.area'), ...types.map((j) => j.name), t('jarrep.xl.totalJars'), t('jarrep.col.deposit')],
       ...rows.map((r) => [r.name, areaOf(r.p), ...types.map((j) => (r.p.jarBalance || {})[j.id] || 0), r.total, Number(fromPaise(r.deposit))]),
-      ['TOTAL', '', ...types.map((j) => totals.by[j.id] || 0), totals.total, Number(fromPaise(totals.deposit))]];
+      [t('jarrep.xl.total'), '', ...types.map((j) => totals.by[j.id] || 0), totals.total, Number(fromPaise(totals.deposit))]];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Jar report');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), t('jarrep.xl.sheet'));
     XLSX.writeFile(wb, 'jar-report.xlsx');
   }
 
   return (
-    <Page title="Jar Report" back="/reports" narrow={false}>
+    <Page title={t('jarrep.title')} back="/reports" narrow={false}>
       <AreaFilter parties={parties} value={area} onChange={setArea} />
-      {!rows.length ? <Empty icon={Drop} title={area ? 'Is area mein koi jar baahar nahi' : 'Koi jar baahar nahi'}>{area ? `"${areaLabel}" ki kisi party ke paas jar ya deposit nahi hai.` : 'Kisi party ke paas jar ya deposit nahi hai.'}</Empty> : (
+      {!rows.length ? <Empty icon={Drop} title={area ? t('jarrep.emptyTitleArea') : t('jarrep.emptyTitle')}>{area ? t('jarrep.emptyArea', { area: areaLabel }) : t('jarrep.empty')}</Empty> : (
         <>
-        <p className="sm:hidden text-xs text-slate-500 px-1">Side mein scroll karke Deposit aur baaki columns dekho.</p>
+        <p className="sm:hidden text-xs text-slate-500 px-1">{t('jarrep.scrollHint')}</p>
         <div className="relative">
-        <div className="card overflow-x-auto" tabIndex={0} role="region" aria-label="Jar report table, side mein scroll hota hai">
+        <div className="card overflow-x-auto" tabIndex={0} role="region" aria-label={t('jarrep.tableAria')}>
           <table className="w-full text-sm num">
             <thead className="bg-slate-100 text-slate-600 sticky top-0">
-              <tr>{th('name', 'Party')}{showArea && th('area', 'Area')}{types.map((j) => th(j.id, j.name))}{th('total', 'Total')}{th('deposit', 'Deposit')}</tr>
+              <tr>{th('name', t('jarrep.col.party'))}{showArea && th('area', t('jarrep.col.area'))}{types.map((j) => th(j.id, j.name))}{th('total', t('jarrep.col.total'))}{th('deposit', t('jarrep.col.deposit'))}</tr>
             </thead>
             <tbody>
               {rows.map((r) => (
@@ -76,7 +78,7 @@ export default function JarReport() {
                 </tr>
               ))}
               <tr className="border-t-2 border-slate-300 bg-brand-50 text-brand-900 font-bold">
-                <td className="sticky left-0 z-10 bg-brand-50 px-3 py-3">Total</td>
+                <td className="sticky left-0 z-10 bg-brand-50 px-3 py-3">{t('jarrep.total')}</td>
                 {showArea && <td className="px-3 py-3" />}
                 {types.map((j) => <td key={j.id} className="px-3 py-3 text-right">{totals.by[j.id] || 0}</td>)}
                 <td className="px-3 py-3 text-right">{totals.total}</td>
@@ -90,10 +92,10 @@ export default function JarReport() {
         </>
       )}
       <div className="grid grid-cols-1 min-[340px]:grid-cols-2 gap-3">
-        <button className="btn" onClick={async () => { const r = await shareText(text(), 'Jar report'); if (r === 'copied') toast('Text copy ho gaya'); }}><ShareNetwork size={20} />Text share</button>
-        <button className="btn" onClick={excel}><FileXls size={20} />Excel</button>
+        <button className="btn" onClick={async () => { const r = await shareText(text(), t('jarrep.shareTitle')); if (r === 'copied') toast(t('jarrep.copied')); }}><ShareNetwork size={20} />{t('jarrep.shareText')}</button>
+        <button className="btn" onClick={excel}><FileXls size={20} />{t('jarrep.excel')}</button>
       </div>
-      <p className="text-xs text-slate-500">Yeh report sirf parties list se banti hai (extra reads nahi lagte). Header dabao to sort hoga.</p>
+      <p className="text-xs text-slate-500">{t('jarrep.footer')}</p>
     </Page>
   );
 }

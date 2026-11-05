@@ -13,6 +13,7 @@ import { planChange, negativeJarWarnings } from '../lib/ledger.js';
 import { dueView } from '../lib/advance.js';
 import { canModifyTxn } from '../lib/roles.js';
 import { repeatBillLines, repeatLabel } from '../lib/repeatBill.js';
+import { useT } from '../lib/i18n.js';
 
 // Unsaved new-bill draft lives in sessionStorage so an accidental reload or back does not lose the work.
 const DRAFT_KEY = 'bluvia_bill_draft';
@@ -41,6 +42,7 @@ export default function BillForm() {
   const [sp] = useSearchParams();
   const nav = useNavigate();
   const toast = useToast();
+  const { t: tr } = useT();
   const { items, itemMap, jarMap, jarTypes, parties, partyMap, jarName, money, settings, profile, user, isAdmin } = useStore();
   const [old, setOld] = useState(null);
   const [f, setF] = useState(null);
@@ -70,7 +72,7 @@ export default function BillForm() {
         try { b = await getOne('transactions', sp.get('repeat')); } catch { b = null; }
         const want = sp.get('party') || b?.partyId || '';
         if (!b || b.type !== 'bill' || b.deleted) {
-          toast('Pichhla bill load nahi hua. Khaali bill khul raha hai.', 'warn');
+          toast(tr('bill.repeatLoadFail'), 'warn');
           setF({ partyId: want, dateKey: todayKey(), forText: settings.invoiceFor || '', discount: 0, extraCharge: 0, note: '', lines: [newLine()] });
           return;
         }
@@ -133,7 +135,7 @@ export default function BillForm() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty, saved]);
   function goBack() {
-    if (dirty && !window.confirm('Bill adhoora hai. Chhod dein?')) return;
+    if (dirty && !window.confirm(tr('bill.confirmLeave'))) return;
     clearDraft();
     nav(-1);
   }
@@ -141,10 +143,10 @@ export default function BillForm() {
   if (!f) return <Spinner />;
   if (old && !canModifyTxn(profile, user?.uid, old)) {
     return (
-      <Page title="Edit bill" back="/bills">
+      <Page title={tr('bill.editTitle')} back="/bills">
         <div className="card p-4 space-y-3">
-          <p className="text-sm text-slate-700">{isAdmin ? 'Ye entry edit nahi ho sakti.' : 'Ye entry ab edit nahi ho sakti. Bill banne ke 1 ghante tak hi staff edit kar sakta hai. Owner se kaho.'}</p>
-          <button className="btn w-full" onClick={() => nav(-1)}><ArrowLeft size={18} />Wapas jao</button>
+          <p className="text-sm text-slate-700">{isAdmin ? tr('bill.cantEditAdmin') : tr('bill.cantEditStaff')}</p>
+          <button className="btn w-full" onClick={() => nav(-1)}><ArrowLeft size={18} />{tr('bill.goBack')}</button>
         </div>
       </Page>
     );
@@ -168,20 +170,20 @@ export default function BillForm() {
   }
 
   async function save() {
-    if (!f.partyId || !party) return toast('Party chuno', 'err');
-    if (!built.length) return toast('Kam se kam ek item aur qty daalo', 'err');
-    if (total < 0) return toast('Total negative nahi ho sakta (discount zyada hai)', 'err');
+    if (!f.partyId || !party) return toast(tr('bill.errParty'), 'err');
+    if (!built.length) return toast(tr('bill.errItems'), 'err');
+    if (total < 0) return toast(tr('bill.errNegative'), 'err');
     const bill = {
       type: 'bill', partyId: f.partyId, partyName: party.name, dateKey: f.dateKey, lines: built,
       subTotal, discount: f.discount || 0, extraCharge: f.extraCharge || 0, total, note: f.note || '', forText: f.forText || '',
     };
     const warn = negativeJarWarnings(party, planChange(old, { ...bill, id: old?.id }).parties[f.partyId] || { jars: {} });
-    if (warn.length && !window.confirm(`Dhyan: ${warn.map((w) => `${jarName(w.jarTypeId)} balance ${w.balance}`).join(', ')} ho jayega. Phir bhi save?`)) return;
+    if (warn.length && !window.confirm(tr('bill.confirmNegJar', { list: warn.map((w) => tr('bill.negJarItem', { jar: jarName(w.jarTypeId), bal: w.balance })).join(', ') }))) return;
     setBusy(true);
     try {
       if (old) {
         const st = await updateTxn(old, bill);
-        toast(st === 'queued' ? 'Phone par save hua. Internet aate hi sync hoga' : 'Bill update ho gaya', st === 'queued' ? 'warn' : 'ok');
+        toast(st === 'queued' ? tr('bill.savedQueued') : tr('bill.updated'), st === 'queued' ? 'warn' : 'ok');
         setSaved({ ...old, ...bill, newOutstanding: (old.prevOutstanding || 0) + total });
       } else {
         const r = await createBill({
@@ -189,11 +191,11 @@ export default function BillForm() {
           returns: Object.fromEntries(Object.entries(returns).filter(([, n]) => n > 0)),
         });
         clearDraft();
-        toast(`Bill ${r.billNo} save ho gaya`);
+        toast(tr('bill.saved', { no: r.billNo }));
         setSaved({ ...bill, id: r.id, billNo: r.billNo, prevOutstanding: r.prevOutstanding, newOutstanding: r.prevOutstanding + total, jarBalanceAfter: r.jarBalanceAfter, depositCollectedInBill: depOn ? depAmt : 0, returnedInBill: Object.fromEntries(Object.entries(returns).filter(([, n]) => n > 0)) });
       }
     } catch (e) {
-      toast(e.message || 'Save nahi hua', 'err', 6000);
+      toast(e.message || tr('bill.saveFail'), 'err', 6000);
       setBusy(false);
     }
   }
@@ -204,99 +206,99 @@ export default function BillForm() {
   return (
     <Page title={(
       <span className="flex items-center gap-2 min-w-0">
-        <button type="button" className="btn btn-ghost !min-h-[44px] !w-11 !px-0 -ml-2 rounded-full shrink-0" onClick={goBack} aria-label="Wapas"><ArrowLeft size={22} /></button>
-        <span className="truncate">{old ? `Edit bill ${old.billNo}` : 'New bill'}</span>
+        <button type="button" className="btn btn-ghost !min-h-[44px] !w-11 !px-0 -ml-2 rounded-full shrink-0" onClick={goBack} aria-label={tr('bill.back')}><ArrowLeft size={22} /></button>
+        <span className="truncate">{old ? tr('bill.titleEdit', { no: old.billNo }) : tr('bill.titleNew')}</span>
       </span>
     )}>
       {repeatInfo && bannerOpen && (
         <section className="rounded-2xl bg-brand-50 border border-brand-100 p-3.5 flex items-start gap-3" role="status">
           <span className="w-9 h-9 shrink-0 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center"><ArrowsClockwise size={20} /></span>
           <div className="min-w-0 flex-1 text-sm space-y-1">
-            <p className="font-semibold text-slate-800">{repeatInfo.label} se bhara gaya. Qty aur rate badal sakte ho.</p>
-            {repeatInfo.changedRates > 0 && <p className="text-slate-600">{repeatInfo.changedRates} item ka rate badal chuka hai.</p>}
-            {repeatInfo.skipped.length > 0 && <p className="text-slate-500">Ye items ab active nahi hain, chhod diye: {repeatInfo.skipped.join(', ')}</p>}
+            <p className="font-semibold text-slate-800">{tr('bill.repeatBanner', { label: repeatInfo.label })}</p>
+            {repeatInfo.changedRates > 0 && <p className="text-slate-600">{tr('bill.repeatRates', { n: repeatInfo.changedRates })}</p>}
+            {repeatInfo.skipped.length > 0 && <p className="text-slate-500">{tr('bill.repeatSkipped', { items: repeatInfo.skipped.join(', ') })}</p>}
           </div>
-          <button type="button" className="btn btn-ghost !min-h-[44px] !w-11 !px-0 rounded-full shrink-0 -mr-2 -mt-1" aria-label="Band karo" onClick={() => setBannerOpen(false)}><X size={20} /></button>
+          <button type="button" className="btn btn-ghost !min-h-[44px] !w-11 !px-0 rounded-full shrink-0 -mr-2 -mt-1" aria-label={tr('bill.close')} onClick={() => setBannerOpen(false)}><X size={20} /></button>
         </section>
       )}
       <section className="space-y-3">
         {!parties.length && !old ? (
           <div className="card p-4 flex items-center gap-3">
             <span className="w-10 h-10 shrink-0 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center"><UsersThree size={20} /></span>
-            <div className="min-w-0 flex-1"><div className="font-semibold">Pehle party jodo</div><div className="text-xs text-slate-500">Bill banane ke liye kam se kam ek party chahiye.</div></div>
-            <Link to="/party/new" className="btn btn-primary btn-sm shrink-0">Party jodo</Link>
+            <div className="min-w-0 flex-1"><div className="font-semibold">{tr('bill.addPartyFirst')}</div><div className="text-xs text-slate-500">{tr('bill.addPartyHint')}</div></div>
+            <Link to="/party/new" className="btn btn-primary btn-sm shrink-0">{tr('bill.addParty')}</Link>
           </div>
         ) : (
-          <Field label="Party"><PartyPicker value={f.partyId} onChange={pickParty} /></Field>
+          <Field label={tr('bill.party')}><PartyPicker value={f.partyId} onChange={pickParty} /></Field>
         )}
         {party && (
           <div className="flex items-center justify-between gap-3 text-sm px-1">
-            <span className="text-slate-500">{dueView(party.outstanding).label === 'Advance' ? 'Abhi advance' : 'Abhi baaki'}</span>
+            <span className="text-slate-500">{dueView(party.outstanding).label === 'Advance' ? tr('bill.advanceNow') : tr('bill.dueNow')}</span>
             <span className={`num font-semibold ${dueView(party.outstanding).tone}`}>{money(dueView(party.outstanding).amount)}</span>
           </div>
         )}
-        <Field label="Date"><input type="date" className="input num" value={f.dateKey} onChange={(e) => set('dateKey', e.target.value || todayKey())} /></Field>
+        <Field label={tr('bill.date')}><input type="date" className="input num" value={f.dateKey} onChange={(e) => set('dateKey', e.target.value || todayKey())} /></Field>
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-slate-500 px-1">Items</h2>
+        <h2 className="text-sm font-semibold text-slate-500 px-1">{tr('bill.items')}</h2>
         {f.lines.map((l) => {
           const it = itemMap[l.itemId];
           const isJar = !!(it?.jarTypeId);
           return (
             <div key={l.key} className="card p-3.5 space-y-3">
               <div className="flex gap-2">
-                <select className="input" aria-label="Item" value={l.itemId} onChange={(e) => pickItem(l.key, e.target.value)}>
-                  <option value="">Item chuno…</option>
+                <select className="input" aria-label={tr('bill.item')} value={l.itemId} onChange={(e) => pickItem(l.key, e.target.value)}>
+                  <option value="">{tr('bill.pickItem')}</option>
                   {itemOptions(l.itemId).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
                 </select>
                 {f.lines.length > 1 && (
-                  <button className="btn btn-ghost !min-h-[48px] !w-12 !px-0 text-slate-500" aria-label="Item hatao" onClick={() => setF({ ...f, lines: f.lines.filter((x) => x.key !== l.key) })}>
+                  <button className="btn btn-ghost !min-h-[48px] !w-12 !px-0 text-slate-500" aria-label={tr('bill.removeItem')} onClick={() => setF({ ...f, lines: f.lines.filter((x) => x.key !== l.key) })}>
                     <Trash size={20} />
                   </button>
                 )}
               </div>
               <div className="grid grid-cols-1 min-[340px]:grid-cols-2 gap-3 items-end">
-                <Field label={`Qty${it?.unit ? ` (${it.unit})` : ''}`}><QtyInput integer={isJar} value={l.qty} onChange={(v) => setLine(l.key, { qty: v })} /></Field>
-                <Field label="Rate"><MoneyInput value={l.rate} onChange={(v) => setLine(l.key, { rate: v, rateTouched: true })} /></Field>
+                <Field label={`${tr('bill.qty')}${it?.unit ? ` (${it.unit})` : ''}`}><QtyInput integer={isJar} value={l.qty} onChange={(v) => setLine(l.key, { qty: v })} /></Field>
+                <Field label={tr('bill.rate')}><MoneyInput value={l.rate} onChange={(v) => setLine(l.key, { rate: v, rateTouched: true })} /></Field>
               </div>
               {!old && l.currentRate > 0 && l.currentRate !== l.rate && (
                 <div className="flex items-center justify-between gap-2 text-xs text-slate-500">
-                  <span>Aaj ka rate: <span className="num font-semibold text-slate-700">{money(l.currentRate)}</span></span>
-                  <button type="button" className="btn btn-ghost btn-sm !min-h-[44px] !px-3 text-brand-700 underline" onClick={() => setLine(l.key, { rate: l.currentRate, rateTouched: true })}>Lagao</button>
+                  <span>{tr('bill.todayRate')} <span className="num font-semibold text-slate-700">{money(l.currentRate)}</span></span>
+                  <button type="button" className="btn btn-ghost btn-sm !min-h-[44px] !px-3 text-brand-700 underline" onClick={() => setLine(l.key, { rate: l.currentRate, rateTouched: true })}>{tr('bill.apply')}</button>
                 </div>
               )}
               <div className="flex items-center justify-between border-t border-slate-100 pt-2.5">
-                <span className="text-sm text-slate-500">Amount</span>
+                <span className="text-sm text-slate-500">{tr('bill.amount')}</span>
                 <span className="num font-semibold text-slate-900">{money(lineAmount(l.qty, l.rate))}</span>
               </div>
               {isJar && (
                 <Switch checked={l.jarGiven} onChange={(e) => setLine(l.key, { jarGiven: e.target.checked })}>
-                  Jar diya ({jarName(it.jarTypeId)}), party ke jar count mein judega
+                  {tr('bill.jarGiven', { jar: jarName(it.jarTypeId) })}
                 </Switch>
               )}
             </div>
           );
         })}
         <button className="btn w-full border-dashed text-brand-700" onClick={() => setF({ ...f, lines: [...f.lines, newLine()] })}>
-          <Plus size={20} weight="bold" />Item add karo
+          <Plus size={20} weight="bold" />{tr('bill.addItem')}
         </button>
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-slate-500 px-1">Charges aur details</h2>
+        <h2 className="text-sm font-semibold text-slate-500 px-1">{tr('bill.chargesDetails')}</h2>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Discount"><MoneyInput value={f.discount} onChange={(v) => set('discount', v)} /></Field>
-          <Field label="Extra charge"><MoneyInput value={f.extraCharge} onChange={(v) => set('extraCharge', v)} /></Field>
+          <Field label={tr('bill.discount')}><MoneyInput value={f.discount} onChange={(v) => set('discount', v)} /></Field>
+          <Field label={tr('bill.extraCharge')}><MoneyInput value={f.extraCharge} onChange={(v) => set('extraCharge', v)} /></Field>
         </div>
-        <Field label="Invoice 'FOR' text" hint="PDF invoice mein FOR: ke neeche dikhega"><input className="input" value={f.forText} onChange={(e) => set('forText', e.target.value)} /></Field>
-        <Field label="Note"><input className="input" value={f.note} onChange={(e) => set('note', e.target.value)} /></Field>
+        <Field label={tr('bill.forText')} hint={tr('bill.forHint')}><input className="input" value={f.forText} onChange={(e) => set('forText', e.target.value)} /></Field>
+        <Field label={tr('bill.note')}><input className="input" value={f.note} onChange={(e) => set('note', e.target.value)} /></Field>
       </section>
 
       {!old && jarTypes.some((j) => j.active !== false) && (
         <section className="card p-4 space-y-3">
-          <div className="text-sm font-semibold text-slate-800">Khali jar wapas liye</div>
-          <p className="text-xs text-slate-500 -mt-2">Optional. Alag Jar Return entry banegi.</p>
+          <div className="text-sm font-semibold text-slate-800">{tr('bill.emptyReturned')}</div>
+          <p className="text-xs text-slate-500 -mt-2">{tr('bill.emptyReturnedHint')}</p>
           <div className="grid grid-cols-2 gap-3">
             {jarTypes.filter((j) => j.active !== false).map((j) => (
               <Field key={j.id} label={j.name}><QtyInput value={returns[j.id] || 0} onChange={(n) => setReturns((r) => ({ ...r, [j.id]: n }))} /></Field>
@@ -307,34 +309,34 @@ export default function BillForm() {
       {!old && (
         <section className="card p-4 space-y-2">
           <Switch checked={depOn} onChange={(e) => setDepOn(e.target.checked)}>
-            <span className="font-semibold text-slate-800">Deposit bhi liya</span> (alag entry banegi)
+            <span className="font-semibold text-slate-800">{tr('bill.depositTaken')}</span> {tr('bill.depositSep')}
           </Switch>
           {depOn && (
-            <Field label="Deposit amount" hint="Deposit bill total ya sales mein nahi judta."><MoneyInput value={depAmt} onChange={(v) => { depTouched.current = true; setDepAmt(v); }} /></Field>
+            <Field label={tr('bill.depositAmount')} hint={tr('bill.depositHint')}><MoneyInput value={depAmt} onChange={(v) => { depTouched.current = true; setDepAmt(v); }} /></Field>
           )}
         </section>
       )}
-      {old && <p className="text-xs text-slate-500 px-1">Deposit ki entry ko Party → Deposit se alag edit karo.</p>}
+      {old && <p className="text-xs text-slate-500 px-1">{tr('bill.depositEditNote')}</p>}
 
       <section className="border-t border-slate-200 pt-4 space-y-1.5">
-        <div className="flex justify-between text-sm text-slate-600"><span>Sub total</span><span className="num">{money(subTotal)}</span></div>
-        {!!f.discount && <div className="flex justify-between text-sm text-slate-600"><span>Discount</span><span className="num">-{money(f.discount)}</span></div>}
-        {!!f.extraCharge && <div className="flex justify-between text-sm text-slate-600"><span>Extra charge</span><span className="num">{money(f.extraCharge)}</span></div>}
+        <div className="flex justify-between text-sm text-slate-600"><span>{tr('bill.subTotal')}</span><span className="num">{money(subTotal)}</span></div>
+        {!!f.discount && <div className="flex justify-between text-sm text-slate-600"><span>{tr('bill.discount')}</span><span className="num">-{money(f.discount)}</span></div>}
+        {!!f.extraCharge && <div className="flex justify-between text-sm text-slate-600"><span>{tr('bill.extraCharge')}</span><span className="num">{money(f.extraCharge)}</span></div>}
         <div className="flex justify-between items-baseline pt-1">
-          <span className="font-semibold text-slate-800">Total</span>
+          <span className="font-semibold text-slate-800">{tr('bill.total')}</span>
           <span className="num text-[28px] leading-8 font-semibold text-slate-900">{money(total)}</span>
         </div>
         {party && (
           <div className="flex justify-between text-sm pt-1">
-            <span className="text-slate-500">{newDue < 0 ? 'Naya advance (bill ke baad)' : 'Naya baaki (bill ke baad)'}</span>
+            <span className="text-slate-500">{newDue < 0 ? tr('bill.newAdvance') : tr('bill.newDue')}</span>
             <span className={`num font-semibold ${dueView(newDue).tone}`}>{money(dueView(newDue).amount)}</span>
           </div>
         )}
       </section>
 
       <StickyBar>
-        <button className="btn flex-1" onClick={goBack}>Cancel</button>
-        <button className="btn btn-primary flex-[2]" disabled={busy} onClick={save}>{busy ? 'Saving…' : `Save ${money(total)}`}</button>
+        <button className="btn flex-1" onClick={goBack}>{tr('common.cancel')}</button>
+        <button className="btn btn-primary flex-[2]" disabled={busy} onClick={save}>{busy ? tr('bill.saving') : tr('bill.saveAmt', { amt: money(total) })}</button>
       </StickyBar>
       <ShareBillModal bill={saved} onClose={() => nav(`/party/${f.partyId}`, { replace: true })} />
     </Page>

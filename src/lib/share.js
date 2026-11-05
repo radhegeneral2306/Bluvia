@@ -84,6 +84,24 @@ export async function sharePdf(doc, filename, title) {
   return 'downloaded';
 }
 
+/**
+ * One-tap WhatsApp: shares the PDF as a file (with the Hinglish text) when the browser can share files,
+ * else downloads the PDF and opens wa.me with the text for `phone`. Returns 'shared' | 'cancelled' | 'downloaded'.
+ */
+export async function shareToWhatsApp(doc, filename, { text, phone, countryCode, title } = {}) {
+  const blob = doc.output('blob');
+  const file = new File([blob], filename, { type: 'application/pdf' });
+  if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title, text }); return 'shared'; }
+    catch (e) { if (e.name === 'AbortError') return 'cancelled'; }
+  }
+  downloadBlob(blob, filename);
+  const url = waLink(phone, text || '', countryCode);
+  const w = window.open(url, '_blank', 'noopener');
+  if (!w) window.location.href = url;
+  return 'downloaded';
+}
+
 export async function shareText(text, title) {
   if (navigator.share) {
     try { await navigator.share({ title, text }); return 'shared'; } catch (e) { if (e.name === 'AbortError') return 'cancelled'; }

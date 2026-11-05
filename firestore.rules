@@ -1,5 +1,10 @@
 rules_version = '2';
-// Deny everything by default. Only the owner account(s) listed in isOwner() can read/write.
+// Deny everything by default. Two kinds of users:
+//  - the owner (admin): the UID listed in isOwner() below. Can do everything except delete.
+//  - staff: a login whose users/{uid} document says role 'staff' and active true (managed inside the app, Staff screen).
+//    Staff can read everything, create bills / receipts / jar / deposit entries (stamped with their own uid),
+//    edit or soft-delete only their OWN bill-type entries during the first hour (each change must leave an audit record),
+//    and can never edit receipts, restore entries, change settings, masters or party details.
 // Put your own Firebase Auth UID inside the quotes below (see SETUP.md). For more users: ['UID1', 'UID2']
 // Nothing is ever hard-deleted by the app (entries are soft-deleted), so every delete is denied.
 service cloud.firestore {
@@ -9,6 +14,18 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid in ['OWNER_UID'];
     }
     function d() { return request.resource.data; }
+    // variants that take the data map (a `let` binding is evaluated once, d() every time: keeps big rules under the 1000 expression limit)
+    function monX(x, f) { return !(f in x) || (x[f] is int && x[f] > -1000000000000 && x[f] < 1000000000000); }
+    function monPosX(x, f) { return !(f in x) || (x[f] is int && x[f] >= 0 && x[f] < 1000000000000); }
+
+    // ---- staff ----
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isStaff() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc().role == 'staff' && userDoc().active == true;
+    }
+    function isMember() { return isOwner() || isStaff(); }
 
     // ---- value helpers ----
     // Money is stored as whole paise (integers). Floats, NaN and Infinity are not ints, so they are rejected.
@@ -19,10 +36,8 @@ service cloud.firestore {
     function noteOk() { return !('note' in d()) || (d().note is string && d().note.size() < 2000); }
     function qtyOk() { return !('qty' in d()) || (d().qty is int && d().qty >= 0 && d().qty < 1000000000); }
 
-    match /settings/{id} {
-      allow read: if isOwner();
-      allow create, update: if isOwner()
-        && (!('nextBillNo' in d()) || (d().nextBillNo is int && d().nextBillNo >= 1 && d().nextBillNo < 1000000000000))
+    function settingsOk() {
+      return (!('nextBillNo' in d()) || (d().nextBillNo is int && d().nextBillNo >= 1 && d().nextBillNo < 1000000000000))
         && (!('billNoPad' in d()) || (d().billNoPad is int && d().billNoPad >= 0 && d().billNoPad <= 20))
         && strOrAbsent('businessName') && strOrAbsent('billPrefix') && strOrAbsent('currency')
         && (!('areas' in d()) || (d().areas is list && d().areas.size() <= 200))
@@ -30,25 +45,31 @@ service cloud.firestore {
         && (!('upiName' in d()) || (d().upiName is string && d().upiName.size() <= 60))
         && (!('upiRemark' in d()) || (d().upiRemark is string && d().upiRemark.size() <= 60))
         && (!('upiQrAmount' in d()) || d().upiQrAmount in ['bill', 'due']);
+    }
+    match /settings/{id} {
+      allow read: if isMember();
+      allow create: if isOwner() && settingsOk();
+      // staff may only move the bill counter forward by exactly one (that is what saving a bill does)
+      allow update: if (isOwner() && settingsOk())
+        || (isStaff() && d().diff(resource.data).affectedKeys().hasOnly(['nextBillNo'])
+            && d().nextBillNo == resource.data.nextBillNo + 1);
       allow delete: if false;
     }
 
     match /jarTypes/{id} {
-      allow read: if isOwner();
+      allow read: if isMember();
       allow create, update: if isOwner() && moneyPos('defaultRate') && moneyPos('defaultDeposit') && strOrAbsent('name');
       allow delete: if false;
     }
 
     match /items/{id} {
-      allow read: if isOwner();
+      allow read: if isMember();
       allow create, update: if isOwner() && moneyPos('defaultRate') && strOrAbsent('name');
       allow delete: if false;
     }
 
-    match /parties/{id} {
-      allow read: if isOwner();
-      allow create, update: if isOwner()
-        && strOrAbsent('name')
+    function partyOk() {
+      return strOrAbsent('name')
         && money('openingBalance') && money('openingDeposit')
         && money('outstanding') && money('depositBalance')
         && (!('area' in d()) || (d().area is string && d().area.size() <= 60))
@@ -57,6 +78,23 @@ service cloud.firestore {
         && (!('locAccuracy' in d()) || d().locAccuracy == null || (d().locAccuracy is number && d().locAccuracy >= 0 && d().locAccuracy < 100000))
         && (!('locSource' in d()) || (d().locSource is string && d().locSource.size() <= 10))
         && noteOk();
+    }
+    // what a staff save may change on a party: balances (by at most Rs 5,00,000 per save) and, once, the first location
+    function partyChanged() { return d().diff(resource.data).affectedKeys(); }
+    function staffBalanceUpdate() {
+      return partyChanged().hasOnly(['outstanding', 'depositBalance', 'jarBalance', 'lastTxnAt'])
+        && (!('jarBalance' in d()) || (d().jarBalance is map && d().jarBalance.size() <= 30))
+        && (!partyChanged().hasAny(['lastTxnAt']) || d().lastTxnAt == request.time)
+        && math.abs(d().get('outstanding', 0) - resource.data.get('outstanding', 0)) <= 50000000
+        && math.abs(d().get('depositBalance', 0) - resource.data.get('depositBalance', 0)) <= 50000000;
+    }
+    function staffLocationUpdate() {
+      return partyChanged().hasOnly(['lat', 'lng', 'locAccuracy', 'locSource', 'locUpdatedAt']) && !('lat' in resource.data);
+    }
+    match /parties/{id} {
+      allow read: if isMember();
+      allow create: if isOwner() && partyOk();
+      allow update: if partyOk() && (isOwner() || (isStaff() && (staffBalanceUpdate() || staffLocationUpdate())));
       allow delete: if false;
     }
 
@@ -69,32 +107,132 @@ service cloud.firestore {
         : 'adjustment';
     }
     function validTxn() {
-      return d().type in ['bill', 'receipt', 'jarReturn', 'jarGiven', 'depositTaken', 'depositRefund', 'depositAdjust', 'adjustment']
-        && d().partyId is string && d().partyId.size() > 0
-        && d().dateKey is string && d().dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
-        && d().deleted is bool
-        && (d().type != 'bill' || inRange(d().total))
-        && (!(d().type in ['receipt', 'depositTaken', 'depositRefund', 'depositAdjust', 'adjustment']) || inRange(d().amount))
-        && (!(d().type in ['receipt', 'depositTaken', 'depositRefund', 'depositAdjust']) || d().amount >= 0)
-        && (!(d().type in ['jarReturn', 'jarGiven']) || (d().qty is int))
-        && qtyOk() && noteOk()
-        && money('amount')
-        && moneyPos('total') && moneyPos('subTotal') && moneyPos('discount') && moneyPos('extraCharge')
-        && money('prevOutstanding') && money('newOutstanding') && moneyPos('depositCollectedInBill');
+      let x = request.resource.data;
+      return x.type in ['bill', 'receipt', 'jarReturn', 'jarGiven', 'depositTaken', 'depositRefund', 'depositAdjust', 'adjustment']
+        && x.partyId is string && x.partyId.size() > 0
+        && x.dateKey is string && x.dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && x.deleted is bool
+        && (x.type != 'bill' || monX(x, 'total'))
+        && (!(x.type in ['receipt', 'depositTaken', 'depositRefund', 'depositAdjust', 'adjustment']) || monX(x, 'amount'))
+        && (!(x.type in ['receipt', 'depositTaken', 'depositRefund', 'depositAdjust']) || x.amount >= 0)
+        && (!(x.type in ['jarReturn', 'jarGiven']) || (x.qty is int))
+        && (!('qty' in x) || (x.qty is int && x.qty >= 0 && x.qty < 1000000000)) && (!('note' in x) || (x.note is string && x.note.size() < 2000))
+        && (!('createdBy' in x) || (x.createdBy is map && x.createdBy.uid is string && x.createdBy.name is string && x.createdBy.name.size() <= 60))
+        && (!('verified' in x) || x.verified is bool)
+        && (!('auditSeq' in x) || (x.auditSeq is int && x.auditSeq >= 0 && x.auditSeq < 100000))
+        && monX(x, 'amount')
+        && monPosX(x, 'total') && monPosX(x, 'subTotal') && monPosX(x, 'discount') && monPosX(x, 'extraCharge')
+        && monX(x, 'prevOutstanding') && monX(x, 'newOutstanding') && monPosX(x, 'depositCollectedInBill');
+    }
+
+    // an entry date must be close to today for staff (today, yesterday, tomorrow for time zones)
+    function nearToday(x) {
+      return x.date is timestamp && x.date >= request.time - duration.value(2, 'd') && x.date <= request.time + duration.value(1, 'd');
+    }
+    // staff create: only these types, stamped with their own uid and real name, server time, never pre-deleted,
+    // receipts start unverified, a bill must use the next bill number and move the counter in the same save
+    function staffCreateOk() {
+      let x = request.resource.data;
+      let by = x.get('createdBy', {});
+      return x.type in ['bill', 'receipt', 'jarReturn', 'jarGiven', 'depositTaken']
+        && by.keys().hasOnly(['uid', 'name']) && by.get('uid', '') == request.auth.uid
+        && by.get('name', '') == userDoc().name
+        && x.createdAt == request.time && x.updatedAt == request.time
+        && x.deleted == false
+        && nearToday(x)
+        && (x.type != 'receipt' || x.get('verified', true) == false)
+        && !x.keys().hasAny(['verifiedBy', 'verifiedAt', 'auditSeq', 'deletedAt'])
+        && x.partyName is string && x.partyName.size() <= 100
+        && x.get('lines', []).size() <= 100
+        && x.get('total', 0) <= 50000000 && x.get('total', 0) >= -50000000
+        && x.get('amount', 0) <= 50000000 && x.get('amount', 0) >= -50000000
+        && exists(/databases/$(database)/documents/parties/$(x.partyId))
+        && (x.type != 'bill'
+            || (x.billSeq is int
+                && get(/databases/$(database)/documents/settings/main).data.nextBillNo == x.billSeq
+                && getAfter(/databases/$(database)/documents/settings/main).data.nextBillNo == x.billSeq + 1));
+    }
+    // staff edit/delete: own bill-type entry, first hour, still active, no moving to another party, only money/text fields
+    // (never bill number, links, creator or time stamps), and an audit record in the same save
+    function staffEditOk(id) {
+      let x = request.resource.data;
+      let r = resource.data;
+      return r.get('createdBy', {}).get('uid', '') == request.auth.uid
+        && r.type in ['bill', 'jarReturn', 'jarGiven', 'depositTaken']
+        && r.deleted == false
+        && x.type == r.type && x.partyId == r.partyId
+        && x.createdBy == r.createdBy && x.createdAt == r.createdAt
+        && x.diff(r).affectedKeys().hasOnly(['partyName', 'dateKey', 'date', 'lines', 'subTotal', 'discount', 'extraCharge', 'total', 'note', 'forText', 'newOutstanding', 'amount', 'mode', 'reference', 'jarTypeId', 'qty', 'jarQty', 'updatedAt', 'auditSeq', 'deleted', 'deletedAt'])
+        && nearToday(x)
+        && x.get('total', 0) <= 50000000 && x.get('total', 0) >= -50000000
+        && x.get('amount', 0) <= 50000000 && x.get('amount', 0) >= -50000000
+        && x.partyName.size() <= 100 && x.get('lines', []).size() <= 100
+        && request.time < r.createdAt + duration.value(1, 'h')
+        && x.get('auditSeq', 0) == r.get('auditSeq', 0) + 1
+        && existsAfter(/databases/$(database)/documents/audit/$(id + '_' + string(x.auditSeq)));
     }
 
     match /transactions/{id} {
-      allow read: if isOwner();
-      allow create: if isOwner() && validTxn();
-      allow update: if isOwner() && validTxn() && txnGroup(d().type) == txnGroup(resource.data.type);
+      allow read: if isMember();
+      allow create: if validTxn() && (isOwner() || (isStaff() && staffCreateOk()));
+      allow update: if validTxn() && txnGroup(d().type) == txnGroup(resource.data.type) && (isOwner() || (isStaff() && staffEditOk(id)));
       allow delete: if false;
     }
 
-    match /stats/{id} {
+    // Audit log: one record per edit / delete / restore. It can only be created together with the change it describes
+    // (the entry's auditSeq goes up by exactly one in the same save and the record id is <txnId>_<auditSeq>).
+    // Never changed or deleted. Only the owner reads it.
+    function txnPath(t) { return /databases/$(database)/documents/transactions/$(t); }
+    match /audit/{aid} {
       allow read: if isOwner();
+      allow create: if isMember()
+        && d().keys().hasOnly(['txnId', 'action', 'at', 'by', 'partyId', 'type', 'before', 'after', 'ctx'])
+        && d().by is map && d().by.keys().hasOnly(['uid', 'name'])
+        && (isOwner() || (d().by.uid == request.auth.uid && d().by.name == userDoc().name))
+        && d().at == request.time
+        && d().txnId is string && d().action in ['edit', 'delete', 'restore']
+        && d().before is map && d().before.size() <= 25 && d().after is map && d().after.size() <= 25
+        && d().ctx is map && d().ctx.size() <= 25
+        && getAfter(txnPath(d().txnId)).data.get('auditSeq', 0) >= 1
+        && aid == d().txnId + '_' + string(getAfter(txnPath(d().txnId)).data.auditSeq)
+        && getAfter(txnPath(d().txnId)).data.auditSeq == get(txnPath(d().txnId)).data.get('auditSeq', 0) + 1;
+      allow update, delete: if false;
+    }
+
+    // Staff list: the owner manages it. A staff member can read their own record and change only their own language.
+    match /users/{uid} {
+      allow read: if isOwner() || (request.auth != null && request.auth.uid == uid);
       allow create, update: if isOwner()
-        && money('totalOutstanding') && money('totalDepositHeld')
-        && money('sales') && money('collection') && money('billsCount');
+        && d().name is string && d().name.size() > 0 && d().name.size() <= 60
+        && d().role in ['admin', 'staff'] && d().active is bool
+        && (!('lang' in d()) || d().lang in ['en', 'hi']);
+      allow update: if isStaff() && request.auth.uid == uid
+        && d().diff(resource.data).affectedKeys().hasOnly(['lang']) && d().lang in ['en', 'hi'];
+      allow delete: if false;
+    }
+
+    // Stats. Owner: free (still range checked). Staff: only add/subtract small amounts on existing totals, or create the
+    // first daily_<date> document of a day, so one bad phone cannot overwrite the totals.
+    function statsOk() {
+      return money('totalOutstanding') && money('totalDepositHeld')
+        && money('sales') && money('collection') && money('billsCount')
+        && (!('totalJarsOut' in d()) || (d().totalJarsOut is map && d().totalJarsOut.size() <= 30));
+    }
+    function statDelta(f) { return math.abs(d().get(f, 0) - resource.data.get(f, 0)) <= 50000000; }
+    function staffStatsUpdate() {
+      return d().diff(resource.data).affectedKeys().hasOnly(['totalOutstanding', 'totalDepositHeld', 'totalJarsOut', 'sales', 'collection', 'billsCount', 'dateKey'])
+        && statDelta('totalOutstanding') && statDelta('totalDepositHeld') && statDelta('sales') && statDelta('collection')
+        && math.abs(d().get('billsCount', 0) - resource.data.get('billsCount', 0)) <= 100;
+    }
+    function staffStatsCreate(id) {
+      return id.matches('daily_[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && d().keys().hasOnly(['dateKey', 'sales', 'collection', 'billsCount'])
+        && math.abs(d().get('sales', 0)) <= 50000000 && math.abs(d().get('collection', 0)) <= 50000000 && math.abs(d().get('billsCount', 0)) <= 100;
+    }
+    match /stats/{id} {
+      allow read: if isMember();
+      allow create: if statsOk() && (isOwner() || (isStaff() && staffStatsCreate(id)));
+      allow update: if statsOk() && (isOwner() || (isStaff() && staffStatsUpdate()));
       allow delete: if false;
     }
 

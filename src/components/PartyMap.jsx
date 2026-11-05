@@ -20,10 +20,11 @@ const CSS = `
 
 /**
  * Leaflet map with one circle pin per party (no image markers, so nothing breaks under the bundler).
- * Props: parties (already filtered), selectedId, onSelect(id), here ({lat,lng}|null), fitKey (refit when it changes), focusId (zoom to this party).
+ * Props: parties (already filtered), selectedId, onSelect(id), here ({lat,lng}|null), fitKey (refit when it changes), focusId (zoom to this party), t (translate function, for the map aria-label).
  * Tiles: OpenStreetMap (attribution is mandatory).
  */
-export default function PartyMap({ parties, selectedId, onSelect, here, fitKey, focusId }) {
+export default function PartyMap({ parties, selectedId, onSelect, here, fitKey, focusId, t }) {
+  const label = t || ((k) => k);
   const boxRef = useRef(null);
   const mapRef = useRef(null);
   const layerRef = useRef(null);
@@ -82,7 +83,7 @@ export default function PartyMap({ parties, selectedId, onSelect, here, fitKey, 
   return (
     <div className="party-map" style={{ isolation: 'isolate', position: 'relative', zIndex: 0 }}>
       <style>{CSS}</style>
-      <div ref={boxRef} role="application" aria-label="Parties ka map" className="w-full rounded-2xl overflow-hidden border border-slate-200"
+      <div ref={boxRef} role="application" aria-label={label('map.mapAria')} className="w-full rounded-2xl overflow-hidden border border-slate-200"
         style={{ height: 'max(320px, calc(100dvh - 330px))' }} />
     </div>
   );

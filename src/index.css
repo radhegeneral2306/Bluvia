@@ -9,7 +9,7 @@
   --s-50: 243 247 248; --s-100: 232 238 240; --s-200: 215 224 228; --s-300: 188 201 207; --s-400: 92 110 119;
   --s-500: 78 96 105; --s-600: 62 80 89; --s-700: 46 63 72; --s-800: 31 46 54; --s-900: 13 27 34;
   --b-50: 230 246 249; --b-100: 199 235 241; --b-500: 0 151 178; --b-600: 2 118 127; --b-700: 1 97 106; --b-900: 0 61 89;
-  --r-50: 254 242 242; --r-100: 254 226 226; --r-200: 254 202 202; --r-500: 220 38 38; --r-600: 197 32 32; --r-700: 166 28 28;
+  --r-50: 254 242 242; --r-100: 254 226 226; --r-200: 254 202 202; --r-500: 220 38 38; --r-600: 197 32 32; --r-700: 166 28 28; --danger-solid: 197 32 32;
   --g-50: 236 253 245; --g-100: 209 250 229; --g-600: 4 120 87; --g-700: 4 99 72;
   --a-50: 255 251 235; --a-100: 254 243 199; --a-200: 253 230 138; --a-500: 217 119 6; --a-600: 180 83 9; --a-700: 146 64 14; --a-800: 120 53 15; --a-900: 100 45 14;
   color-scheme: light;
@@ -20,7 +20,7 @@
   --s-50: 10 19 24; --s-100: 22 34 40; --s-200: 36 52 60; --s-300: 56 76 86; --s-400: 138 160 170;
   --s-500: 158 177 186; --s-600: 182 198 205; --s-700: 196 209 215; --s-800: 222 231 235; --s-900: 242 247 248;
   --b-50: 11 42 49; --b-100: 15 59 68; --b-500: 42 183 201; --b-600: 8 117 128; --b-700: 94 205 220; --b-900: 160 220 232;
-  --r-50: 58 24 28; --r-100: 74 28 34; --r-200: 110 40 48; --r-500: 248 113 113; --r-600: 252 140 140; --r-700: 254 170 170;
+  --r-50: 58 24 28; --r-100: 74 28 34; --r-200: 110 40 48; --r-500: 248 113 113; --r-600: 252 140 140; --r-700: 254 170 170; --danger-solid: 185 28 28;
   --g-50: 16 50 38; --g-100: 20 66 49; --g-600: 82 214 160; --g-700: 130 228 185;
   --a-50: 52 40 12; --a-100: 70 53 14; --a-200: 110 82 20; --a-500: 240 178 60; --a-600: 245 190 80; --a-700: 248 205 110; --a-800: 250 215 140; --a-900: 252 228 175;
   color-scheme: dark;
@@ -31,7 +31,7 @@
   --s-50: 10 19 24; --s-100: 22 34 40; --s-200: 36 52 60; --s-300: 56 76 86; --s-400: 138 160 170;
   --s-500: 158 177 186; --s-600: 182 198 205; --s-700: 196 209 215; --s-800: 222 231 235; --s-900: 242 247 248;
   --b-50: 11 42 49; --b-100: 15 59 68; --b-500: 42 183 201; --b-600: 8 117 128; --b-700: 94 205 220; --b-900: 160 220 232;
-  --r-50: 58 24 28; --r-100: 74 28 34; --r-200: 110 40 48; --r-500: 248 113 113; --r-600: 252 140 140; --r-700: 254 170 170;
+  --r-50: 58 24 28; --r-100: 74 28 34; --r-200: 110 40 48; --r-500: 248 113 113; --r-600: 252 140 140; --r-700: 254 170 170; --danger-solid: 185 28 28;
   --g-50: 16 50 38; --g-100: 20 66 49; --g-600: 82 214 160; --g-700: 130 228 185;
   --a-50: 52 40 12; --a-100: 70 53 14; --a-200: 110 82 20; --a-500: 240 178 60; --a-600: 245 190 80; --a-700: 248 205 110; --a-800: 250 215 140; --a-900: 252 228 175;
   color-scheme: dark;
@@ -50,7 +50,10 @@ h1, h2, h3, p, li, .label { overflow-wrap: anywhere; }
   /* Radius scale: controls 12px, cards 16px, chips full. Never mixed. */
   .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 min-h-[48px] text-[15px] font-semibold border border-slate-200 bg-surface text-slate-800 transition-[transform,background-color,border-color] duration-150 active:scale-[0.98] active:bg-slate-100 disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap; }
   .btn-primary { @apply bg-brand-600 border-brand-600 text-white active:bg-brand-600 active:brightness-95; }
-  .btn-danger { @apply bg-red-600 border-red-600 text-white active:bg-red-600 active:brightness-95; }
+  /* Solid danger fill has its own token: --r-600 turns pale in dark mode (white on rgb 252 140 140 = 2.27:1).
+     White on light 197 32 32 = 5.83:1; white on dark 185 28 28 = 6.47:1 (both pass 4.5:1). */
+  .btn-danger { @apply text-white active:brightness-95; background-color: rgb(var(--danger-solid)); border-color: rgb(var(--danger-solid)); }
+  .btn-danger:active { background-color: rgb(var(--danger-solid)); }
   .btn-ghost { @apply border-transparent bg-transparent active:bg-slate-100; }
   .btn-sm { @apply min-h-[40px] px-3 text-sm; }
   .input { @apply w-full rounded-xl border border-slate-200 bg-surface px-3.5 min-h-[48px] text-base text-slate-900 placeholder:text-slate-500 transition-shadow focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30; }
@@ -62,6 +65,7 @@ h1, h2, h3, p, li, .label { overflow-wrap: anywhere; }
   .skeleton { @apply relative overflow-hidden rounded-xl bg-slate-100; }
   .skeleton::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgb(var(--surface) / .6), transparent); animation: shimmer 1.4s infinite; }
 }
+@media (pointer: coarse) { .btn-sm { min-height: 44px; } }
 button, a, [role='button'], [role='tab'], label { touch-action: manipulation; }
 /* iOS Safari: native date/number inputs ignore width and radius unless appearance is reset */
 input.input[type='date'], input.input[type='time'], input.input[type='month'] { -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 0; max-width: 100%; text-align: left; }

@@ -37,7 +37,7 @@ describe('locale files', () => {
     for (const [name, loc] of [['en', en], ['hi', hi]]) {
       for (const [k, v] of Object.entries(loc)) {
         expect(typeof v === 'string' && v.trim().length > 0, `${name}:${k} empty`).toBe(true);
-        expect(/[–—]/.test(v), `${name}:${k} has a dash`).toBe(false);
+        expect(/[\u2013\u2014]/.test(v), `${name}:${k} has a dash`).toBe(false);
       }
     }
   });

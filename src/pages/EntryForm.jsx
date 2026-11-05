@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useStore } from '../data/store.jsx';
 import { createEntry, updateTxn, getOne } from '../data/api.js';
 import { Page, Field, MoneyInput, QtyInput, StickyBar, Tabs, Spinner, useToast } from '../components/ui.jsx';
 import PartyPicker from '../components/PartyPicker.jsx';
+import { canModifyTxn, STAFF_TYPES } from '../lib/roles.js';
 import { dueView } from '../lib/advance.js';
 import { todayKey } from '../lib/dates.js';
 import { planChange, negativeJarWarnings } from '../lib/ledger.js';
@@ -40,7 +41,7 @@ export default function EntryForm() {
   const [sp] = useSearchParams();
   const nav = useNavigate();
   const toast = useToast();
-  const { settings, jarTypes, partyMap, jarMap, jarName, money } = useStore();
+  const { settings, jarTypes, partyMap, jarMap, jarName, money, profile, user, isAdmin } = useStore();
   const [old, setOld] = useState(null);
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -66,7 +67,18 @@ export default function EntryForm() {
     })();
   }, [f, id, kind, sp, nav, settings, jarTypes]);
 
+  if (!id && !isAdmin && GROUPS[kind] && !GROUPS[kind].types.some((tp) => STAFF_TYPES.includes(tp))) return <Navigate to="/" replace />;
   if (!f) return <Spinner />;
+  if (old && !canModifyTxn(profile, user?.uid, old)) {
+    return (
+      <Page title="Edit entry" back>
+        <div className="card p-4 space-y-3">
+          <p className="text-sm text-slate-700">{isAdmin ? 'Ye entry edit nahi ho sakti.' : 'Ye entry ab edit nahi ho sakti. Bill banne ke 1 ghante tak hi staff edit kar sakta hai. Owner se kaho.'}</p>
+          <button className="btn w-full" onClick={() => nav(-1)}>Wapas jao</button>
+        </div>
+      </Page>
+    );
+  }
   const group = groupOf(f.type);
   const party = partyMap[f.partyId];
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
@@ -114,7 +126,7 @@ export default function EntryForm() {
     } catch (e) { toast(e.message, 'err'); setBusy(false); }
   }
 
-  const tabs = GROUPS[group].types.length > 1 ? GROUPS[group].types.map((tp) => [tp, LABEL[tp]]) : null;
+  const tabs = GROUPS[group].types.length > 1 ? GROUPS[group].types.filter((tp) => isAdmin || STAFF_TYPES.includes(tp)).map((tp) => [tp, LABEL[tp]]) : null;
 
   return (
     <Page title={`${old ? 'Edit ' : ''}${GROUPS[group].title}`} back>

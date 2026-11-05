@@ -3,7 +3,7 @@ import { useStore } from '../data/store.jsx';
 import { FilePdf, WhatsappLogo, Check, QrCode } from '@phosphor-icons/react';
 import { Modal, Tabs, useToast } from './ui.jsx';
 import { buildBillPdf } from '../lib/pdf.js';
-import { sharePdf, billText, waLink } from '../lib/share.js';
+import { sharePdf, shareToWhatsApp, billText, waLink } from '../lib/share.js';
 import { qrAmountFor } from '../lib/upi.js';
 import UpiQrSheet from './UpiQrSheet.jsx';
 
@@ -25,13 +25,24 @@ export default function ShareBillModal({ bill, onClose }) {
       if (r === 'downloaded') toast('PDF download ho gaya');
     } catch (e) { toast(`PDF nahi bana: ${e.message}`, 'err'); } finally { setBusy(false); }
   }
+  async function whatsapp() {
+    setBusy(true);
+    try {
+      const doc = await buildBillPdf({ bill, party, settings, jarName, jarTypes, layout });
+      const r = await shareToWhatsApp(doc, `${bill.billNo || 'bill'}.pdf`, { text, phone: party?.phone, countryCode: settings.countryCode, title: `Bill ${bill.billNo}` });
+      if (r === 'downloaded') toast('PDF download ho gaya, WhatsApp mein attach karo');
+    } catch (e) { toast(`PDF nahi bana: ${e.message}`, 'err'); } finally { setBusy(false); }
+  }
   const text = billText({ bill, party, settings, jarName, money });
   return (
     <Modal open onClose={onClose} title={`Bill ${bill.billNo || ''} share karo`}>
       <div className="space-y-3">
         <Tabs tabs={[['invoice', 'Invoice (full page)'], ['thermal', 'Thermal (narrow)']]} value={layout} onChange={pick} />
-        <button className="btn btn-primary w-full" disabled={busy} onClick={pdf}>
-          <FilePdf size={20} />{busy ? 'Ban raha hai…' : 'PDF share / download'}
+        <button className="btn btn-primary w-full !min-h-[56px] text-base" disabled={busy} onClick={whatsapp}>
+          <WhatsappLogo size={24} />{busy ? 'Ban raha hai…' : 'WhatsApp par bhejo'}
+        </button>
+        <button className="btn w-full" disabled={busy} onClick={pdf}>
+          <FilePdf size={20} />PDF share / download
         </button>
         <a className={`btn w-full ${party?.phone ? '' : 'opacity-50 pointer-events-none'}`} target="_blank" rel="noreferrer"
           href={waLink(party?.phone, text, settings.countryCode)}><WhatsappLogo size={20} />WhatsApp text bhejo</a>

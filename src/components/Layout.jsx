@@ -1,5 +1,5 @@
 import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
-import { House, MapTrifold, UsersThree, Receipt, ChartBar, List, Plus, Drop, Wallet, Tag, Database, ClockCounterClockwise, Gear } from '@phosphor-icons/react';
+import { House, MapTrifold, UsersThree, Receipt, ChartBar, List, Plus, Drop, Wallet, Tag, Database, ClockCounterClockwise, Gear, UsersFour, ListMagnifyingGlass, UserPlus } from '@phosphor-icons/react';
 import { useStore } from '../data/store.jsx';
 
 const main = [
@@ -12,17 +12,17 @@ const main = [
 const groups = [
   ['Daily', [['/', House, 'Dashboard', true], ['/bill/new', Plus, 'New bill'], ['/parties', UsersThree, 'Parties'], ['/map', MapTrifold, 'Map'], ['/bills', Receipt, 'Bills and receipts']]],
   ['Reports', [['/reports/jars', Drop, 'Jar report'], ['/reports/outstanding', Wallet, 'Outstanding']]],
-  ['Manage', [['/masters', Tag, 'Jar types and items'], ['/backup', Database, 'Backup and restore'], ['/deleted', ClockCounterClockwise, 'Deleted entries'], ['/settings', Gear, 'Settings']]],
+  ['Manage', [['/masters', Tag, 'Jar types and items'], ['/backup', Database, 'Backup and restore'], ['/deleted', ClockCounterClockwise, 'Deleted entries'], ['/settings', Gear, 'Settings'], ['/staff', UsersFour, 'Staff'], ['/changes', ListMagnifyingGlass, 'Changes (audit log)'], ['/quick-add', UserPlus, 'Quick add party']]],
 ];
 
 export default function Layout({ banner }) {
-  const { settings } = useStore();
+  const { settings, isAdmin } = useStore();
   const { pathname } = useLocation();
   return (
     <div className="min-h-full lg:flex">
       <aside className="hidden lg:flex lg:flex-col w-64 shrink-0 bg-surface border-r border-slate-200 sticky top-0 h-screen p-4 gap-5 overflow-y-auto">
         <Link to="/" aria-label={settings?.businessName || 'Bluvia'}><img src="/logo.jpg" alt={settings?.businessName || 'Bluvia'} className="w-full rounded-xl" /></Link>
-        {groups.map(([name, links]) => (
+        {groups.filter(([name]) => isAdmin || name !== 'Manage').map(([name, links]) => (
           <nav key={name} aria-label={name} className="space-y-0.5">
             <div className="px-3 pb-1 text-xs font-semibold text-slate-500 uppercase tracking-wider">{name}</div>
             {links.map(([to, Icon, label, end]) => (

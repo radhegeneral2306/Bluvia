@@ -2,12 +2,11 @@ import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Crosshair, LinkSimple, NavigationArrow, MapTrifold, WarningCircle, CheckCircle, Warning } from '@phosphor-icons/react';
 import { Modal, Field, useToast } from './ui.jsx';
+import { useStore } from '../data/store.jsx';
 import { saveLocation } from '../data/api.js';
 import { getBestPosition } from '../lib/gps.js';
 import { dateKeyOf, fmtDate } from '../lib/dates.js';
 import { accuracyLevel, formatDistance, hasLocation, haversineMeters, navUrls, parseMapsLink, FAR_MOVE_M } from '../lib/geo.js';
-
-const IS_ADMIN = true; // staff roles come later: only the admin may change a saved location
 
 const LEVEL = {
   good: { text: 'Bahut achha', cls: 'text-emerald-700', word: 'achha' },
@@ -29,6 +28,7 @@ const savedDate = (ts) => {
 /** Location of one party: save it once (GPS at the customer's door, or a pasted maps link), then navigate or see it on the map. */
 export default function LocationCard({ party }) {
   const toast = useToast();
+  const { isAdmin: IS_ADMIN } = useStore(); // staff may set a location only when none is saved yet
   const has = hasLocation(party);
   const [mode, setMode] = useState(null);           // null | 'gps' | 'link'
   const [phase, setPhase] = useState('idle');       // gps: 'searching' | 'result' | 'error'

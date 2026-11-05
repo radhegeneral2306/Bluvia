@@ -7,10 +7,11 @@ import { Page, Tabs, Spinner, Empty, useToast } from '../components/ui.jsx';
 import TxnRow, { EditLink } from '../components/TxnRow.jsx';
 import ShareBillModal from '../components/ShareBillModal.jsx';
 import { describeTxn } from '../lib/describe.js';
+import { canModifyTxn } from '../lib/roles.js';
 import { askLinkedDelete } from '../lib/linkedDelete.js';
 
 export default function Bills() {
-  const { jarName, money } = useStore();
+  const { jarName, money, profile, user } = useStore();
   const toast = useToast();
   const nav = useNavigate();
   const [type, setType] = useState('bill');
@@ -53,8 +54,8 @@ export default function Bills() {
           <ArrowsClockwise size={18} /><span className="hidden min-[400px]:inline">Dobara</span>
         </button>
       )}
-      <EditLink t={row.t} />
-      <button className="btn btn-sm !text-red-600" aria-label="Delete" onClick={() => del(row.t)}><Trash size={18} /></button>
+      {canModifyTxn(profile, user?.uid, row.t) && <EditLink t={row.t} />}
+      {canModifyTxn(profile, user?.uid, row.t) && <button className="btn btn-sm !text-red-600" aria-label="Delete" onClick={() => del(row.t)}><Trash size={18} /></button>}
     </>
   );
 

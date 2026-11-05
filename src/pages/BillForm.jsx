@@ -11,6 +11,7 @@ import { lineAmount, billTotals } from '../lib/money.js';
 import { rateFor, depositPerJar } from '../lib/rates.js';
 import { planChange, negativeJarWarnings } from '../lib/ledger.js';
 import { dueView } from '../lib/advance.js';
+import { canModifyTxn } from '../lib/roles.js';
 import { repeatBillLines, repeatLabel } from '../lib/repeatBill.js';
 
 // Unsaved new-bill draft lives in sessionStorage so an accidental reload or back does not lose the work.
@@ -40,7 +41,7 @@ export default function BillForm() {
   const [sp] = useSearchParams();
   const nav = useNavigate();
   const toast = useToast();
-  const { items, itemMap, jarMap, jarTypes, parties, partyMap, jarName, money, settings } = useStore();
+  const { items, itemMap, jarMap, jarTypes, parties, partyMap, jarName, money, settings, profile, user, isAdmin } = useStore();
   const [old, setOld] = useState(null);
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -138,6 +139,16 @@ export default function BillForm() {
   }
 
   if (!f) return <Spinner />;
+  if (old && !canModifyTxn(profile, user?.uid, old)) {
+    return (
+      <Page title="Edit bill" back="/bills">
+        <div className="card p-4 space-y-3">
+          <p className="text-sm text-slate-700">{isAdmin ? 'Ye entry edit nahi ho sakti.' : 'Ye entry ab edit nahi ho sakti. Bill banne ke 1 ghante tak hi staff edit kar sakta hai. Owner se kaho.'}</p>
+          <button className="btn w-full" onClick={() => nav(-1)}><ArrowLeft size={18} />Wapas jao</button>
+        </div>
+      </Page>
+    );
+  }
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const setLine = (key, patch) => setF((p) => ({ ...p, lines: p.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)) }));
 

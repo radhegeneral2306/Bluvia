@@ -21,7 +21,7 @@ const actions = [
 ];
 
 export default function Dashboard() {
-  const { settings, summary, daily, jarName, money, parties, jarTypes } = useStore();
+  const { settings, summary, daily, jarName, money, parties, jarTypes, isAdmin } = useStore();
   const jars = Object.entries(summary?.totalJarsOut || {}).filter(([, n]) => n);
   const totalJars = jars.reduce((s, [, n]) => s + n, 0);
   const last = settings.lastBackupAt?.toMillis?.();
@@ -32,14 +32,14 @@ export default function Dashboard() {
   return (
     <Page title={settings.businessName} narrow={false}>
       <img src="/logo.jpg" alt="" className="h-14 rounded-xl lg:hidden" />
-      {stale && (
+      {isAdmin && stale && (
         <Link to="/backup" className="flex items-start gap-3 rounded-xl bg-amber-100 text-amber-900 p-3 text-sm font-medium">
           <Warning size={20} className="shrink-0 mt-px" />
           <span>{days === null ? 'Abhi tak koi backup nahi liya.' : `Last backup ${days} din pehle liya tha.`} Backup lene ke liye yahan dabao.</span>
         </Link>
       )}
 
-      {!parties.length && (
+      {isAdmin && !parties.length && (
         <section className="card p-4 space-y-3" aria-label="Shuruaat">
           <h2 className="font-semibold">Shuruaat</h2>
           <p className="text-sm text-slate-600">Pehle ye 4 kaam karo, phir roz ka kaam aasan ho jayega.</p>
@@ -81,7 +81,7 @@ export default function Dashboard() {
           ))}
         </div>
       </section>
-      {!jarTypes.length && <p className="text-sm text-slate-500">Pehle "More, Jar Types aur Items" mein jar types banao.</p>}
+      {isAdmin && !jarTypes.length && <p className="text-sm text-slate-500">Pehle "More, Jar Types aur Items" mein jar types banao.</p>}
     </Page>
   );
 }

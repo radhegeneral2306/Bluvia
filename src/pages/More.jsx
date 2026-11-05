@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom';
-import { MapTrifold, Tag, Database, ClockCounterClockwise, Calculator, Gear, CaretRight } from '@phosphor-icons/react';
+import { MapTrifold, Tag, Database, ClockCounterClockwise, Calculator, Gear, CaretRight, UsersFour, ListMagnifyingGlass, UserPlus, SignOut, UserCircle } from '@phosphor-icons/react';
+import { signOut } from 'firebase/auth';
 import { Page } from '../components/ui.jsx';
+import { useStore } from '../data/store.jsx';
+import { auth } from '../lib/firebase.js';
 
 const groups = [
   ['Parties', [
@@ -17,10 +20,26 @@ const groups = [
   ]],
 ];
 
+const adminParties = ['/quick-add', UserPlus, 'Quick add party', 'Naya customer jaldi jodo (naam, phone, location)'];
+const teamGroup = ['Team', [
+  ['/staff', UsersFour, 'Staff', 'Staff login banao, band karo'],
+  ['/changes', ListMagnifyingGlass, 'Changes (audit log)', 'Kisne kya badla, kab'],
+]];
+
 export default function More() {
+  const { profile, user, isAdmin } = useStore();
+  const who = profile?.name || user?.email || '';
+  const list = groups
+    .filter(([name]) => isAdmin || (name !== 'Data' && name !== 'Tools'))
+    .map(([name, rows]) => [name, name === 'Parties' && isAdmin ? [...rows, adminParties] : rows]);
+  if (isAdmin) list.push(teamGroup);
   return (
     <Page title="More">
-      {groups.map(([name, rows]) => (
+      <div className="card p-4 flex items-center gap-3">
+        <span className="w-10 h-10 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><UserCircle size={22} /></span>
+        <div className="min-w-0"><div className="text-xs text-slate-500">Login</div><div className="font-semibold truncate">{who ? `${who} (${isAdmin ? 'Owner' : 'Staff'})` : (isAdmin ? 'Owner' : 'Staff')}</div></div>
+      </div>
+      {list.map(([name, rows]) => (
         <section key={name} className="space-y-2">
           <h2 className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">{name}</h2>
           <div className="card divide-y divide-slate-100 overflow-hidden">
@@ -37,6 +56,7 @@ export default function More() {
           </div>
         </section>
       ))}
+      <button className="btn btn-danger w-full" onClick={() => signOut(auth)}><SignOut size={20} />Logout</button>
     </Page>
   );
 }

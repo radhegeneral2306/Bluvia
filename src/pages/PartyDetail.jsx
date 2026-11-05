@@ -13,13 +13,14 @@ import UpiQrSheet from '../components/UpiQrSheet.jsx';
 import { describeTxn } from '../lib/describe.js';
 import { findLastBill } from '../lib/repeatBill.js';
 import { buildStatementPdf } from '../lib/pdf.js';
+import { canModifyTxn } from '../lib/roles.js';
 import { sharePdf, statementText, waLink, shareText } from '../lib/share.js';
 
 export default function PartyDetail() {
   const { id } = useParams();
   const nav = useNavigate();
   const toast = useToast();
-  const { partyMap, jarTypes, jarName, money, settings } = useStore();
+  const { partyMap, jarTypes, jarName, money, settings, profile, user, isAdmin } = useStore();
   const party = partyMap[id];
   const [tab, setTab] = useState('ledger');
   const [entries, setEntries] = useState([]);
@@ -75,8 +76,8 @@ export default function PartyDetail() {
           <ArrowsClockwise size={18} /><span className="hidden min-[400px]:inline">Dobara</span>
         </button>
       )}
-      <EditLink t={row.t} />
-      <button className="btn btn-sm !text-red-600" onClick={() => del(row.t)}><Trash size={18} />Delete</button>
+      {canModifyTxn(profile, user?.uid, row.t) && <EditLink t={row.t} />}
+      {canModifyTxn(profile, user?.uid, row.t) && <button className="btn btn-sm !text-red-600" onClick={() => del(row.t)}><Trash size={18} />Delete</button>}
     </>
   );
 
@@ -112,7 +113,7 @@ export default function PartyDetail() {
   const stmt = statementText({ party, rows, settings, jarName, money });
 
   return (
-    <Page title={party.name} back="/parties" actions={<Link to={`/party/${id}/edit`} className="btn btn-sm">Edit</Link>}>
+    <Page title={party.name} back="/parties" actions={isAdmin ? <Link to={`/party/${id}/edit`} className="btn btn-sm">Edit</Link> : null}>
       <div className="card p-4">
         <div className="flex items-center gap-3 mb-4">
           <Avatar name={party.name} className="!w-12 !h-12 !text-base" />
@@ -160,7 +161,7 @@ export default function PartyDetail() {
         <div className="space-y-2">{shown.map((r) => <TxnRow key={r.t.id} row={r} money={money} actions={actions} />)}</div>
       )}
       {hasMore && <button className="btn w-full" disabled={loading} onClick={() => load(true)}>{loading ? 'Loading…' : 'Load more'}</button>}
-      <div className="text-center"><Link className="btn btn-ghost btn-sm text-slate-500 underline" to={q('/entry/new/adjustment')}>Manual adjustment entry</Link></div>
+      {isAdmin && <div className="text-center"><Link className="btn btn-ghost btn-sm text-slate-500 underline" to={q('/entry/new/adjustment')}>Manual adjustment entry</Link></div>}
 
       <ShareBillModal bill={shareBill} onClose={() => setShareBill(null)} />
       <UpiQrSheet open={qrOpen} onClose={() => setQrOpen(false)} partyName={party.name} billNo="" suggestedPaise={(party.outstanding || 0) > 0 ? party.outstanding : 0} />

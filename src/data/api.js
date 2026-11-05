@@ -8,6 +8,16 @@ import { db } from '../lib/firebase.js';
 import { addReads } from '../lib/reads.js';
 import { dateFromKey, startOfKey, endOfKey } from '../lib/dates.js';
 import { planChange, planChanges, openingState, openingDelta, effectOf } from '../lib/ledger.js';
+import { AUDIT_FIELDS } from '../lib/roles.js';
+
+// Who is logged in right now. The store sets this once the user's profile is known; every new entry is stamped with it.
+let actor = null;      // { uid, name } stamped on entries
+let actorRole = null;  // 'admin' | 'staff'
+export function setActor(a) {
+  actor = a && a.uid ? { uid: a.uid, name: String(a.name || '').slice(0, 60) || 'User' } : null;
+  actorRole = actor ? (a.role || null) : null;
+}
+export const getActor = () => actor;
 
 export const tsFromKey = (key) => Timestamp.fromDate(dateFromKey(key));
 export const withId = (d) => ({ id: d.id, ...d.data() });
@@ -122,13 +132,37 @@ export async function saveLocation(partyId, { lat, lng, accuracy = null, source 
 }
 
 // ---------- transactions ----------
-const base = (t) => ({ deleted: false, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ...t, date: tsFromKey(t.dateKey) });
+const base = (t) => ({
+  deleted: false, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  ...(actor ? { createdBy: { ...actor } } : {}),
+  ...t, date: tsFromKey(t.dateKey),
+});
+
+// ---------- audit log ----------
+const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o && o[k] !== undefined && typeof o[k] !== 'function').map((k) => [k, o[k]]));
+/**
+ * Adds the audit record for an edit / delete / restore to the SAME batch and returns the fields to merge into the entry
+ * (auditSeq goes up by one; the rules for staff check that the matching audit/{txnId}_{seq} record is written in the same save).
+ */
+function auditStep(b, oldT, newT, action) {
+  const seq = (oldT.auditSeq || 0) + 1;
+  const changed = AUDIT_FIELDS.filter((k) => JSON.stringify(oldT[k] ?? null) !== JSON.stringify(newT[k] ?? null));
+  const keys = action === 'edit' ? changed : ['deleted'];
+  const ctx = pick(newT, ['type', 'billNo', 'partyName', 'dateKey', 'total', 'amount', 'qty', 'mode']);
+  b.set(doc(db, 'audit', `${oldT.id}_${seq}`), {
+    txnId: oldT.id, action, at: serverTimestamp(), by: actor ? { ...actor } : { uid: 'unknown', name: 'Unknown' },
+    partyId: oldT.partyId || '', type: oldT.type || '', before: pick(oldT, keys), after: pick(newT, keys), ctx,
+  });
+  return { auditSeq: seq };
+}
 
 /** receipts, jar entries, deposit entries, adjustments (offline-safe, no bill number needed) */
 export async function createEntry(t) {
   const ref = doc(collection(db, 'transactions'));
   const b = writeBatch(db);
-  b.set(ref, base(t));
+  // a receipt entered by staff starts as unverified; the owner checks the bank statement and marks it verified
+  const extra = t.type === 'receipt' ? { verified: actorRole !== 'staff' } : {};
+  b.set(ref, base({ ...extra, ...t }));
   writeDeltaOnly(b, planChange(null, t));
   const r = await commitSafe(b.commit());
   return { id: ref.id, status: r };
@@ -221,6 +255,7 @@ export async function updateTxn(oldT0, patch) {
   const data = { ...patch, updatedAt: serverTimestamp() };
   if (patch.dateKey) data.date = tsFromKey(patch.dateKey);
   if (oldT.type === 'bill' && patch.total != null) data.newOutstanding = (oldT.prevOutstanding || 0) + patch.total;
+  Object.assign(data, auditStep(b, oldT, newT, 'edit'));
   b.update(doc(db, 'transactions', oldT.id), data);
   writePlan(b, planChange(oldT, newT));
   return commitSafe(b.commit());
@@ -236,10 +271,10 @@ export async function softDeleteTxn(oldT0, { withLinked = false } = {}) {
   const oldT = await fresh(oldT0);
   const b = writeBatch(db);
   const pairs = [[oldT, { ...oldT, deleted: true }]];
-  b.update(doc(db, 'transactions', oldT.id), { deleted: true, deletedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  b.update(doc(db, 'transactions', oldT.id), { deleted: true, deletedAt: serverTimestamp(), updatedAt: serverTimestamp(), ...auditStep(b, oldT, { ...oldT, deleted: true }, 'delete') });
   if (withLinked && oldT.type === 'bill') {
     for (const l of await findLinked(oldT.id)) {
-      b.update(doc(db, 'transactions', l.id), { deleted: true, deletedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      b.update(doc(db, 'transactions', l.id), { deleted: true, deletedAt: serverTimestamp(), updatedAt: serverTimestamp(), ...auditStep(b, l, { ...l, deleted: true }, 'delete') });
       pairs.push([l, { ...l, deleted: true }]);
     }
   }
@@ -258,10 +293,10 @@ export async function restoreTxn(oldT0, { withLinked = false } = {}) {
   if (!oldT.deleted) throw new Error('Yeh entry pehle se active hai.');
   const b = writeBatch(db);
   const pairs = [[{ ...oldT, deleted: true }, { ...oldT, deleted: false }]];
-  b.update(doc(db, 'transactions', oldT.id), { deleted: false, updatedAt: serverTimestamp() });
+  b.update(doc(db, 'transactions', oldT.id), { deleted: false, updatedAt: serverTimestamp(), ...auditStep(b, oldT, { ...oldT, deleted: false }, 'restore') });
   if (withLinked && oldT.type === 'bill') {
     for (const l of await findDeletedLinked(oldT.id)) {
-      b.update(doc(db, 'transactions', l.id), { deleted: false, updatedAt: serverTimestamp() });
+      b.update(doc(db, 'transactions', l.id), { deleted: false, updatedAt: serverTimestamp(), ...auditStep(b, l, { ...l, deleted: false }, 'restore') });
       pairs.push([{ ...l, deleted: true }, { ...l, deleted: false }]);
     }
   }

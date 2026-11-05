@@ -1,5 +1,10 @@
 rules_version = '2';
-// Deny everything by default. Only the owner account(s) listed in isOwner() can read/write.
+// Deny everything by default. Two kinds of users:
+//  - the owner (admin): the UID listed in isOwner() below. Can do everything except delete.
+//  - staff: a login whose users/{uid} document says role 'staff' and active true (managed inside the app, Staff screen).
+//    Staff can read everything, create bills / receipts / jar / deposit entries (stamped with their own uid),
+//    edit or soft-delete only their OWN bill-type entries during the first hour (each change must leave an audit record),
+//    and can never edit receipts, restore entries, change settings, masters or party details.
 // Put your own Firebase Auth UID inside the quotes below (see SETUP.md). For more users: ['UID1', 'UID2']
 // Nothing is ever hard-deleted by the app (entries are soft-deleted), so every delete is denied.
 service cloud.firestore {
@@ -10,6 +15,15 @@ service cloud.firestore {
     }
     function d() { return request.resource.data; }
 
+    // ---- staff ----
+    function userDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isStaff() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc().role == 'staff' && userDoc().active == true;
+    }
+    function isMember() { return isOwner() || isStaff(); }
+
     // ---- value helpers ----
     // Money is stored as whole paise (integers). Floats, NaN and Infinity are not ints, so they are rejected.
     function inRange(v) { return v is int && v > -1000000000000 && v < 1000000000000; }
@@ -19,10 +33,8 @@ service cloud.firestore {
     function noteOk() { return !('note' in d()) || (d().note is string && d().note.size() < 2000); }
     function qtyOk() { return !('qty' in d()) || (d().qty is int && d().qty >= 0 && d().qty < 1000000000); }
 
-    match /settings/{id} {
-      allow read: if isOwner();
-      allow create, update: if isOwner()
-        && (!('nextBillNo' in d()) || (d().nextBillNo is int && d().nextBillNo >= 1 && d().nextBillNo < 1000000000000))
+    function settingsOk() {
+      return (!('nextBillNo' in d()) || (d().nextBillNo is int && d().nextBillNo >= 1 && d().nextBillNo < 1000000000000))
         && (!('billNoPad' in d()) || (d().billNoPad is int && d().billNoPad >= 0 && d().billNoPad <= 20))
         && strOrAbsent('businessName') && strOrAbsent('billPrefix') && strOrAbsent('currency')
         && (!('areas' in d()) || (d().areas is list && d().areas.size() <= 200))
@@ -30,25 +42,31 @@ service cloud.firestore {
         && (!('upiName' in d()) || (d().upiName is string && d().upiName.size() <= 60))
         && (!('upiRemark' in d()) || (d().upiRemark is string && d().upiRemark.size() <= 60))
         && (!('upiQrAmount' in d()) || d().upiQrAmount in ['bill', 'due']);
+    }
+    match /settings/{id} {
+      allow read: if isMember();
+      allow create: if isOwner() && settingsOk();
+      // staff may only move the bill counter forward by exactly one (that is what saving a bill does)
+      allow update: if (isOwner() && settingsOk())
+        || (isStaff() && d().diff(resource.data).affectedKeys().hasOnly(['nextBillNo'])
+            && d().nextBillNo == resource.data.nextBillNo + 1);
       allow delete: if false;
     }
 
     match /jarTypes/{id} {
-      allow read: if isOwner();
+      allow read: if isMember();
       allow create, update: if isOwner() && moneyPos('defaultRate') && moneyPos('defaultDeposit') && strOrAbsent('name');
       allow delete: if false;
     }
 
     match /items/{id} {
-      allow read: if isOwner();
+      allow read: if isMember();
       allow create, update: if isOwner() && moneyPos('defaultRate') && strOrAbsent('name');
       allow delete: if false;
     }
 
-    match /parties/{id} {
-      allow read: if isOwner();
-      allow create, update: if isOwner()
-        && strOrAbsent('name')
+    function partyOk() {
+      return strOrAbsent('name')
         && money('openingBalance') && money('openingDeposit')
         && money('outstanding') && money('depositBalance')
         && (!('area' in d()) || (d().area is string && d().area.size() <= 60))
@@ -57,6 +75,22 @@ service cloud.firestore {
         && (!('locAccuracy' in d()) || d().locAccuracy == null || (d().locAccuracy is number && d().locAccuracy >= 0 && d().locAccuracy < 100000))
         && (!('locSource' in d()) || (d().locSource is string && d().locSource.size() <= 10))
         && noteOk();
+    }
+    // what a staff save may change on a party: balances (by at most Rs 5,00,000 per save) and, once, the first location
+    function partyChanged() { return d().diff(resource.data).affectedKeys(); }
+    function staffBalanceUpdate() {
+      return partyChanged().hasOnly(['outstanding', 'depositBalance', 'jarBalance', 'lastTxnAt'])
+        && (!('jarBalance' in d()) || d().jarBalance is map)
+        && math.abs(d().get('outstanding', 0) - resource.data.get('outstanding', 0)) <= 50000000
+        && math.abs(d().get('depositBalance', 0) - resource.data.get('depositBalance', 0)) <= 50000000;
+    }
+    function staffLocationUpdate() {
+      return partyChanged().hasOnly(['lat', 'lng', 'locAccuracy', 'locSource', 'locUpdatedAt']) && !('lat' in resource.data);
+    }
+    match /parties/{id} {
+      allow read: if isMember();
+      allow create: if isOwner() && partyOk();
+      allow update: if partyOk() && (isOwner() || (isStaff() && (staffBalanceUpdate() || staffLocationUpdate())));
       allow delete: if false;
     }
 
@@ -78,21 +112,72 @@ service cloud.firestore {
         && (!(d().type in ['receipt', 'depositTaken', 'depositRefund', 'depositAdjust']) || d().amount >= 0)
         && (!(d().type in ['jarReturn', 'jarGiven']) || (d().qty is int))
         && qtyOk() && noteOk()
+        && (!('createdBy' in d()) || createdByOk())
+        && (!('verified' in d()) || d().verified is bool)
+        && (!('auditSeq' in d()) || (d().auditSeq is int && d().auditSeq >= 0 && d().auditSeq < 100000))
         && money('amount')
         && moneyPos('total') && moneyPos('subTotal') && moneyPos('discount') && moneyPos('extraCharge')
         && money('prevOutstanding') && money('newOutstanding') && moneyPos('depositCollectedInBill');
     }
 
+    function createdByOk() {
+      return d().createdBy is map && d().createdBy.uid is string && d().createdBy.name is string && d().createdBy.name.size() <= 60;
+    }
+    // staff create: only these types, stamped with their own uid, never pre-deleted, UPI/other receipts start unverified
+    function staffCreateOk() {
+      return d().type in ['bill', 'receipt', 'jarReturn', 'jarGiven', 'depositTaken']
+        && 'createdBy' in d() && createdByOk() && d().createdBy.uid == request.auth.uid
+        && d().deleted == false
+        && (d().type != 'receipt' || d().verified == false)
+        && !('auditSeq' in d());
+    }
+    // staff edit/delete: own bill-type entry, first hour, no restore, no moving to another party, and an audit record in the same save
+    function staffEditOk(id) {
+      return 'createdBy' in resource.data && resource.data.createdBy.uid == request.auth.uid
+        && resource.data.type in ['bill', 'jarReturn', 'jarGiven', 'depositTaken']
+        && d().type == resource.data.type
+        && d().partyId == resource.data.partyId
+        && d().createdBy == resource.data.createdBy
+        && d().createdAt == resource.data.createdAt
+        && request.time < resource.data.createdAt + duration.value(1, 'h')
+        && (d().deleted == true || resource.data.deleted == false)
+        && d().get('auditSeq', 0) == resource.data.get('auditSeq', 0) + 1
+        && existsAfter(/databases/$(database)/documents/audit/$(id + '_' + string(d().auditSeq)));
+    }
+
     match /transactions/{id} {
+      allow read: if isMember();
+      allow create: if validTxn() && (isOwner() || (isStaff() && staffCreateOk()));
+      allow update: if validTxn() && txnGroup(d().type) == txnGroup(resource.data.type) && (isOwner() || (isStaff() && staffEditOk(id)));
+      allow delete: if false;
+    }
+
+    // Audit log: one record per edit / delete / restore. Written together with the change, never changed or deleted. Only the owner reads it.
+    match /audit/{aid} {
       allow read: if isOwner();
-      allow create: if isOwner() && validTxn();
-      allow update: if isOwner() && validTxn() && txnGroup(d().type) == txnGroup(resource.data.type);
+      allow create: if isMember()
+        && d().by is map && (isOwner() || d().by.uid == request.auth.uid)
+        && d().at == request.time
+        && d().txnId is string && d().action in ['edit', 'delete', 'restore']
+        && d().size() < 30;
+      allow update, delete: if false;
+    }
+
+    // Staff list: the owner manages it. A staff member can read their own record and change only their own language.
+    match /users/{uid} {
+      allow read: if isOwner() || (request.auth != null && request.auth.uid == uid);
+      allow create, update: if isOwner()
+        && d().name is string && d().name.size() > 0 && d().name.size() <= 60
+        && d().role in ['admin', 'staff'] && d().active is bool
+        && (!('lang' in d()) || d().lang in ['en', 'hi']);
+      allow update: if isStaff() && request.auth.uid == uid
+        && d().diff(resource.data).affectedKeys().hasOnly(['lang']) && d().lang in ['en', 'hi'];
       allow delete: if false;
     }
 
     match /stats/{id} {
-      allow read: if isOwner();
-      allow create, update: if isOwner()
+      allow read: if isMember();
+      allow create, update: if isMember()
         && money('totalOutstanding') && money('totalDepositHeld')
         && money('sales') && money('collection') && money('billsCount');
       allow delete: if false;

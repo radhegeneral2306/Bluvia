@@ -5,7 +5,8 @@ import { CloudSlash, ArrowsClockwise } from '@phosphor-icons/react';
 import { StoreProvider, useStore } from './data/store.jsx';
 import { ToastProvider, Spinner } from './components/ui.jsx';
 import Layout from './components/Layout.jsx';
-import { configured } from './lib/firebase.js';
+import { signOut } from 'firebase/auth';
+import { configured, auth } from './lib/firebase.js';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Parties from './pages/Parties.jsx';
@@ -23,6 +24,8 @@ import Backup from './pages/Backup.jsx';
 import Recalc from './pages/Recalc.jsx';
 import Deleted from './pages/Deleted.jsx';
 import More from './pages/More.jsx';
+import Staff from './pages/Staff.jsx';
+import Changes from './pages/Changes.jsx';
 
 const MapView = lazy(() => import('./pages/MapView.jsx')); // Leaflet is only downloaded when the map is opened
 
@@ -69,14 +72,23 @@ function Banners() {
 }
 
 function Gate() {
-  const { user, ready, accessError } = useStore();
+  const { user, ready, accessError, blocked, isAdmin } = useStore();
   if (user === undefined) return <div className="p-4 max-w-2xl mx-auto"><Spinner text="Starting" rows={3} /></div>;
   if (!user) return <><UpdateBar /><Login /></>;
+  if (blocked) {
+    return (
+      <div className="p-6 max-w-lg mx-auto">
+        <h1 className="text-xl font-semibold mb-2 text-red-700">Account band hai</h1>
+        <p className="text-sm text-slate-700">Aapka login band kar diya gaya hai. Owner se baat karo.</p>
+        <button className="btn btn-secondary mt-4" onClick={() => signOut(auth)}>Logout</button>
+      </div>
+    );
+  }
   if (accessError) {
     return (
       <div className="p-6 max-w-lg mx-auto">
         <h1 className="text-xl font-semibold mb-2 text-red-700">Access denied</h1>
-        <p className="text-sm text-slate-700">Is login ka UID Firestore rules mein allowed nahi hai. SETUP.md ka "UID kaise nikalein" step dekho aur <code>firestore.rules</code> mein OWNER_UID badal kar rules dobara publish karo.</p>
+        <p className="text-sm text-slate-700">Is login ko access nahi mila. Agar aap owner ho: SETUP.md ka "UID kaise nikalein" step dekho aur <code>firestore.rules</code> mein OWNER_UID badal kar rules dobara publish karo. Agar aap staff ho: owner se kaho ki Staff screen mein aapka UID jod de.</p>
         <p className="text-sm mt-2 text-slate-700">Aapka UID: <code className="break-all num">{user.uid}</code></p>
       </div>
     );
@@ -88,9 +100,9 @@ function Gate() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/parties" element={<Parties />} />
         <Route path="/map" element={<Suspense fallback={<div className="p-4 max-w-2xl mx-auto"><Spinner text="Map khul raha hai" rows={3} /></div>}><MapView /></Suspense>} />
-        <Route path="/party/new" element={<PartyForm />} />
+        <Route path="/party/new" element={isAdmin ? <PartyForm /> : <Navigate to="/" replace />} />
         <Route path="/party/:id" element={<PartyDetail />} />
-        <Route path="/party/:id/edit" element={<PartyForm />} />
+        <Route path="/party/:id/edit" element={isAdmin ? <PartyForm /> : <Navigate to="/" replace />} />
         <Route path="/bill/new" element={<BillForm />} />
         <Route path="/bill/:id/edit" element={<BillForm />} />
         <Route path="/entry/new/:kind" element={<EntryForm />} />
@@ -99,11 +111,13 @@ function Gate() {
         <Route path="/reports" element={<Reports />} />
         <Route path="/reports/jars" element={<JarReport />} />
         <Route path="/reports/outstanding" element={<OutstandingReport />} />
-        <Route path="/masters" element={<Masters />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/backup" element={<Backup />} />
-        <Route path="/recalc" element={<Recalc />} />
-        <Route path="/deleted" element={<Deleted />} />
+        <Route path="/masters" element={isAdmin ? <Masters /> : <Navigate to="/" replace />} />
+        <Route path="/settings" element={isAdmin ? <Settings /> : <Navigate to="/" replace />} />
+        <Route path="/backup" element={isAdmin ? <Backup /> : <Navigate to="/" replace />} />
+        <Route path="/recalc" element={isAdmin ? <Recalc /> : <Navigate to="/" replace />} />
+        <Route path="/deleted" element={isAdmin ? <Deleted /> : <Navigate to="/" replace />} />
+        <Route path="/staff" element={isAdmin ? <Staff /> : <Navigate to="/" replace />} />
+        <Route path="/changes" element={isAdmin ? <Changes /> : <Navigate to="/" replace />} />
         <Route path="/more" element={<More />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

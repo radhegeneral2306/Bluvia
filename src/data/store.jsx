@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, doc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, configured } from '../lib/firebase.js';
 import { addReads } from '../lib/reads.js';
 import { todayKey } from '../lib/dates.js';
 import { fmtMoney } from '../lib/money.js';
-import { seedDefaults, DEFAULT_SETTINGS } from './api.js';
+import { seedDefaults, DEFAULT_SETTINGS, setActor } from './api.js';
+import { isAdmin as roleIsAdmin } from '../lib/roles.js';
 
 const Ctx = createContext(null);
 export const useStore = () => useContext(Ctx);
@@ -24,6 +25,7 @@ export function StoreProvider({ children }) {
   const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
   const [loaded, setLoaded] = useState({ settings: false, parties: false });
   const [accessError, setAccessError] = useState(null);
+  const [profile, setProfile] = useState(undefined); // users/{uid}: undefined = loading, null = none
   const seeding = useRef(false);
 
   useEffect(() => {
@@ -38,8 +40,28 @@ export function StoreProvider({ children }) {
     return onAuthStateChanged(auth, (u) => setUser(u || null));
   }, []);
 
+  // Who am I? users/{uid} says admin or staff. The owner has no record on first login, so one is created for them.
+  useEffect(() => {
+    setProfile(undefined);
+    setActor(null);
+    if (!user || !db) return undefined;
+    const ref = doc(db, 'users', user.uid);
+    return onSnapshot(ref, (s) => {
+      if (s.exists()) {
+        const p = { id: s.id, ...s.data() };
+        setProfile(p);
+        setActor({ uid: user.uid, name: p.name, role: p.role });
+      } else if (!s.metadata.fromCache) {
+        // no record: either the owner's very first login (the rules let only the owner write this) or someone who is not allowed
+        setDoc(ref, { name: 'Owner', role: 'admin', active: true, createdAt: serverTimestamp() })
+          .catch((e) => { if (e.code === 'permission-denied') { setProfile(null); setAccessError('permission-denied'); } });
+      }
+    }, (e) => { if (e.code === 'permission-denied') { setProfile(null); setAccessError('permission-denied'); } });
+  }, [user]);
+
   useEffect(() => {
     if (!user || !db) return undefined;
+    if (!profile || profile.active === false) return undefined;
     setAccessError(null);
     const err = (e) => { console.error(e); if (e.code === 'permission-denied') setAccessError('permission-denied'); };
     const count = (snap, n) => { if (!snap.metadata.fromCache) addReads(Math.max(1, n)); };
@@ -68,15 +90,15 @@ export function StoreProvider({ children }) {
     }, err));
     unsubs.push(onSnapshot(doc(db, 'stats', 'summary'), (s) => { count(s, 1); setSummary(s.exists() ? s.data() : {}); }, err));
     return () => unsubs.forEach((u) => u());
-  }, [user]);
+  }, [user, profile?.role, profile?.active]);
 
   useEffect(() => {
-    if (!user || !db) return undefined;
+    if (!user || !db || !profile || profile.active === false) return undefined;
     return onSnapshot(doc(db, 'stats', `daily_${today}`), (s) => {
       if (!s.metadata.fromCache) addReads(1);
       setDaily(s.exists() ? s.data() : {});
     }, () => {});
-  }, [user, today]);
+  }, [user, today, profile?.role, profile?.active]);
 
   const partyMap = useMemo(() => Object.fromEntries(parties.map((p) => [p.id, p])), [parties]);
   const jarMap = useMemo(() => Object.fromEntries(jarTypes.map((j) => [j.id, j])), [jarTypes]);
@@ -86,8 +108,8 @@ export function StoreProvider({ children }) {
   const jarName = useCallback((id) => jarMap[id]?.name || '(deleted jar type)', [jarMap]);
 
   const value = {
-    user, settings, jarTypes, items, parties, partyMap, jarMap, itemMap, summary, daily, today, online,
-    ready: loaded.settings && loaded.parties && !!settings, accessError, money, currency, jarName,
+    user, profile, isAdmin: roleIsAdmin(profile), blocked: !!profile && profile.active === false, settings, jarTypes, items, parties, partyMap, jarMap, itemMap, summary, daily, today, online,
+    ready: !!profile && loaded.settings && loaded.parties && !!settings, accessError, money, currency, jarName,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

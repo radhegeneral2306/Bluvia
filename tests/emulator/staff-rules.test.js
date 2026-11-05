@@ -62,12 +62,25 @@ const me = (uid, name) => ({ uid, name: NAMES[uid] || name });
 const P = 'party1';
 const J = 'jar20';
 const DAY = '2026-03-01';
+const TODAY = new Date().toISOString().slice(0, 10);
 const hoursAgo = (h) => Timestamp.fromMillis(Date.now() - h * 3600 * 1000);
 
 const billDoc = (uid, extra = {}) => ({
   type: 'bill', partyId: P, partyName: 'Ram', dateKey: DAY, date: Timestamp.now(), total: 20000, subTotal: 20000,
   deleted: false, createdAt: serverTimestamp(), updatedAt: serverTimestamp(), createdBy: me(uid, 'N'), ...extra,
 });
+/** what api.createBill does for staff: read counter, create the bill with billSeq, bump the counter, all in one transaction */
+async function staffBill(db, uid, extra = {}) {
+  const id = newId('b');
+  const sRef = doc(db, 'settings', 'main');
+  await runTransaction(db, async (tx) => {
+    const seq = (await tx.get(sRef)).data().nextBillNo;
+    tx.set(doc(db, 'transactions', id), billDoc(uid, { billSeq: seq, billNo: String(seq), ...extra }));
+    tx.update(sRef, { nextBillNo: seq + 1 });
+  });
+  return id;
+}
+const jr = (uid, extra = {}) => ({ ...billDoc(uid), type: 'jarReturn', qty: 1, jarTypeId: J, ...extra });
 let idc = 0;
 const newId = (p) => `${p}_${++idc}`;
 /** owner-seeded txn (any shape, createdAt can be in the past) */
@@ -100,8 +113,9 @@ beforeAll(async () => {
   await setDoc(doc(owner, 'parties', P), { name: 'Ram', outstanding: 0, depositBalance: 0, openingBalance: 0, openingDeposit: 0, jarBalance: {} });
   await setDoc(doc(owner, 'parties', 'party2'), { name: 'Shyam', outstanding: 0, depositBalance: 0, openingBalance: 0, openingDeposit: 0, jarBalance: {} });
   await setDoc(doc(owner, 'stats', 'summary'), { totalOutstanding: 0, totalDepositHeld: 0 });
-  await setDoc(doc(owner, 'audit', 'seed_1'), auditData('seed', OWNER));
   await seedTxn('seedtxn', { type: 'bill', partyId: P, dateKey: DAY, deleted: false, total: 100, createdAt: serverTimestamp() });
+  await seedTxn('seed', { type: 'bill', partyId: P, dateKey: DAY, deleted: false, total: 100, createdAt: serverTimestamp() });
+  await editBatch(owner, OWNER, 'seed', { total: 101 }); // creates audit 'seed_1' together with the change
 });
 
 describe('reads', () => {
@@ -203,43 +217,43 @@ describe('parties', () => {
 describe('transaction creation', () => {
   it('staff can create bill / receipt / jarReturn / jarGiven / depositTaken stamped with own uid', async () => {
     const t = (type, extra) => ({ ...billDoc(S1), type, ...extra });
-    await allowed(setDoc(doc(s1, 'transactions', newId('c')), t('bill', { total: 100 })));
+    await allowed(staffBill(s1, S1, { total: 100 }));
     await allowed(setDoc(doc(s1, 'transactions', newId('c')), t('receipt', { amount: 5000, verified: false, mode: 'Cash' })));
     await allowed(setDoc(doc(s1, 'transactions', newId('c')), t('jarReturn', { qty: 2, jarTypeId: J })));
     await allowed(setDoc(doc(s1, 'transactions', newId('c')), t('jarGiven', { qty: 2, jarTypeId: J })));
     await allowed(setDoc(doc(s1, 'transactions', newId('c')), t('depositTaken', { amount: 10000 })));
   });
   it('createdBy must be own uid and must exist', async () => {
-    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S2)));
-    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(OWNER)));
-    const noBy = billDoc(S1); delete noBy.createdBy;
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), jr(S2)));
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), jr(OWNER)));
+    const noBy = jr(S1); delete noBy.createdBy;
     await denied(setDoc(doc(s1, 'transactions', newId('c')), noBy));
-    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1, { createdBy: { uid: S1 } })));
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), jr(S1, { createdBy: { uid: S1 } })));
   });
   it('createdAt must be the server time (no future date to stretch the 1 hour edit window) and the name must be the real one', async () => {
-    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1, { createdAt: Timestamp.fromMillis(Date.now() + 365 * 24 * 3600 * 1000) })));
-    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1, { createdAt: hoursAgo(5) })));
-    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1, { createdBy: { uid: S1, name: 'Owner' } })));
-    await allowed(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1)));
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), jr(S1, { createdAt: Timestamp.fromMillis(Date.now() + 365 * 24 * 3600 * 1000) })));
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), jr(S1, { createdAt: hoursAgo(5) })));
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), jr(S1, { createdBy: { uid: S1, name: 'Owner' } })));
+    await allowed(setDoc(doc(s1, 'transactions', newId('c')), jr(S1)));
   });
   it('staff cannot create depositRefund / depositAdjust / adjustment', async () => {
     for (const type of ['depositRefund', 'depositAdjust', 'adjustment']) {
-      await denied(setDoc(doc(s1, 'transactions', newId('c')), { ...billDoc(S1), type, amount: 100 }));
+      await denied(setDoc(doc(s1, 'transactions', newId('c')), { ...jr(S1), type, amount: 100 }));
     }
   });
   it('receipt must start unverified', async () => {
-    const r = { ...billDoc(S1), type: 'receipt', amount: 100 };
+    const r = { ...jr(S1), type: 'receipt', amount: 100 };
     await denied(setDoc(doc(s1, 'transactions', newId('c')), { ...r, verified: true }));
     await denied(setDoc(doc(s1, 'transactions', newId('c')), r)); // no verified field at all
     await allowed(setDoc(doc(s1, 'transactions', newId('c')), { ...r, verified: false }));
   });
   it('staff cannot create pre-deleted entries or set auditSeq', async () => {
-    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1, { deleted: true })));
-    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1, { auditSeq: 3 })));
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), jr(S1, { deleted: true })));
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), jr(S1, { auditSeq: 3 })));
   });
   it('invalid shapes are denied (float total, bad dateKey)', async () => {
-    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1, { total: 10.5 })));
-    await denied(setDoc(doc(s1, 'transactions', newId('c')), billDoc(S1, { dateKey: '1/3/2026' })));
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), jr(S1, { total: 10.5 })));
+    await denied(setDoc(doc(s1, 'transactions', newId('c')), jr(S1, { dateKey: '1/3/2026' })));
   });
   it('owner can create every type, and a verified receipt', async () => {
     for (const type of ['depositRefund', 'depositAdjust', 'adjustment']) {
@@ -252,7 +266,7 @@ describe('transaction creation', () => {
 
 describe('staff edit / delete of transactions', () => {
   it('own bill within the hour with a matching audit doc in the same batch is allowed', async () => {
-    const id = newId('e'); await setDoc(doc(s1, 'transactions', id), billDoc(S1));
+    const id = newId('e'); await seedTxn(id, billDoc(S1));
     await allowed(editBatch(s1, S1, id, { total: 30000, subTotal: 30000 }));
     expect((await getDoc(doc(owner, 'transactions', id))).data()).toMatchObject({ total: 30000, auditSeq: 1 });
     expect((await getDoc(doc(owner, 'audit', `${id}_1`))).exists()).toBe(true);
@@ -261,18 +275,18 @@ describe('staff edit / delete of transactions', () => {
     await denied(editBatch(s1, S1, id, { total: 32000 }, { seq: 2 }));
   });
   it('edit of own jarReturn / depositTaken works too', async () => {
-    const j = newId('e'); await setDoc(doc(s1, 'transactions', j), { ...billDoc(S1), type: 'jarReturn', qty: 1, jarTypeId: J });
+    const j = newId('e'); await seedTxn(j, { ...billDoc(S1), type: 'jarReturn', qty: 1, jarTypeId: J });
     await allowed(editBatch(s1, S1, j, { qty: 4 }));
-    const d = newId('e'); await setDoc(doc(s1, 'transactions', d), { ...billDoc(S1), type: 'depositTaken', amount: 500 });
+    const d = newId('e'); await seedTxn(d, { ...billDoc(S1), type: 'depositTaken', amount: 500 });
     await allowed(editBatch(s1, S1, d, { amount: 600 }));
   });
   it('without an audit doc it is denied (txn update and later audit write are separate)', async () => {
-    const id = newId('e'); await setDoc(doc(s1, 'transactions', id), billDoc(S1));
+    const id = newId('e'); await seedTxn(id, billDoc(S1));
     await denied(editBatch(s1, S1, id, { total: 1 }, { audit: false }));
     await denied(updateDoc(doc(s1, 'transactions', id), { total: 1 }));
   });
   it('wrong auditSeq or wrong audit doc id is denied', async () => {
-    const id = newId('e'); await setDoc(doc(s1, 'transactions', id), billDoc(S1));
+    const id = newId('e'); await seedTxn(id, billDoc(S1));
     await denied(editBatch(s1, S1, id, { total: 1 }, { seq: 2 }));       // skips 1
     await denied(editBatch(s1, S1, id, { total: 1 }, { seq: 0 }));       // no increment
     await denied(editBatch(s1, S1, id, { total: 1 }, { seq: 1, auditId: `${id}_9` })); // audit id does not match
@@ -280,7 +294,7 @@ describe('staff edit / delete of transactions', () => {
     await allowed(editBatch(s1, S1, id, { total: 1 }));
   });
   it("another staff member's bill is denied, owner's bill is denied", async () => {
-    const id = newId('e'); await setDoc(doc(s1, 'transactions', id), billDoc(S1));
+    const id = newId('e'); await seedTxn(id, billDoc(S1));
     await denied(editBatch(s2, S2, id, { total: 5 }));
     const o = newId('e'); await seedTxn(o, billDoc(OWNER));
     await denied(editBatch(s1, S1, o, { total: 5 }));
@@ -298,7 +312,7 @@ describe('staff edit / delete of transactions', () => {
     await allowed(updateDoc(doc(owner, 'transactions', old), { total: 7 }));
   });
   it('receipt edit is denied for staff', async () => {
-    const id = newId('e'); await setDoc(doc(s1, 'transactions', id), { ...billDoc(S1), type: 'receipt', amount: 100, verified: false });
+    const id = newId('e'); await seedTxn(id, { ...billDoc(S1), type: 'receipt', amount: 100, verified: false });
     await denied(editBatch(s1, S1, id, { amount: 200 }));
     await denied(editBatch(s1, S1, id, { verified: true }));
     await denied(editBatch(s1, S1, id, { deleted: true }));
@@ -309,7 +323,7 @@ describe('staff edit / delete of transactions', () => {
     await allowed(updateDoc(doc(owner, 'transactions', id), { deleted: false }));
   });
   it('changing partyId, type, createdBy or createdAt is denied', async () => {
-    const id = newId('e'); await setDoc(doc(s1, 'transactions', id), billDoc(S1));
+    const id = newId('e'); await seedTxn(id, billDoc(S1));
     await denied(editBatch(s1, S1, id, { partyId: 'party2' }));
     await denied(editBatch(s1, S1, id, { type: 'receipt', amount: 1, verified: false }));
     await denied(editBatch(s1, S1, id, { type: 'jarGiven', qty: 1 }));
@@ -318,7 +332,7 @@ describe('staff edit / delete of transactions', () => {
     await denied(editBatch(s1, S1, id, { total: 1.5 }));
   });
   it('staff soft delete of own bill with audit is allowed; a second delete needs seq 2', async () => {
-    const id = newId('e'); await setDoc(doc(s1, 'transactions', id), billDoc(S1));
+    const id = newId('e'); await seedTxn(id, billDoc(S1));
     const b = writeBatch(s1);
     b.update(doc(s1, 'transactions', id), { deleted: true, deletedAt: serverTimestamp(), updatedAt: serverTimestamp(), auditSeq: 1 });
     b.set(doc(s1, 'audit', `${id}_1`), auditData(id, S1, 'delete'));
@@ -329,14 +343,14 @@ describe('staff edit / delete of transactions', () => {
     await denied(b2.commit());
   });
   it('staff soft delete without audit, of someone else bill, or old bill is denied', async () => {
-    const id = newId('e'); await setDoc(doc(s1, 'transactions', id), billDoc(S1));
+    const id = newId('e'); await seedTxn(id, billDoc(S1));
     await denied(updateDoc(doc(s1, 'transactions', id), { deleted: true, auditSeq: 1 }));
     await denied(editBatch(s2, S2, id, { deleted: true }, { action: 'delete' }));
     const old = newId('e'); await seedTxn(old, billDoc(S1, { createdAt: hoursAgo(3) }));
     await denied(editBatch(s1, S1, old, { deleted: true }, { action: 'delete' }));
   });
   it('hard delete is denied for everyone', async () => {
-    const id = newId('e'); await setDoc(doc(s1, 'transactions', id), billDoc(S1));
+    const id = newId('e'); await seedTxn(id, billDoc(S1));
     await denied(deleteDoc(doc(s1, 'transactions', id)));
     await denied(deleteDoc(doc(owner, 'transactions', id)));
   });
@@ -346,26 +360,42 @@ describe('audit log', () => {
   it('cannot be updated or deleted by anyone', async () => {
     await denied(updateDoc(doc(owner, 'audit', 'seed_1'), { action: 'delete' }));
     await denied(deleteDoc(doc(owner, 'audit', 'seed_1')));
-    const id = newId('a'); await setDoc(doc(s1, 'transactions', id), billDoc(S1));
+    const id = newId('a'); await seedTxn(id, billDoc(S1));
     await allowed(editBatch(s1, S1, id, { total: 9 }));
     await denied(updateDoc(doc(s1, 'audit', `${id}_1`), { action: 'delete' }));
     await denied(deleteDoc(doc(s1, 'audit', `${id}_1`)));
     await denied(setDoc(doc(s1, 'audit', `${id}_1`), auditData(id, S1))); // overwrite = update
   });
-  it('staff audit needs by.uid == own uid and at == server time', async () => {
-    await denied(setDoc(doc(s1, 'audit', newId('a')), auditData('t', S2)));
-    await denied(setDoc(doc(s1, 'audit', newId('a')), auditData('t', S1, 'edit', { at: Timestamp.now() })));
-    await denied(setDoc(doc(s1, 'audit', newId('a')), auditData('t', S1, 'edit', { at: hoursAgo(5) })));
-    await denied(setDoc(doc(s1, 'audit', newId('a')), auditData('t', S1, 'hack')));
-    await denied(setDoc(doc(s1, 'audit', newId('a')), auditData('t', S1, 'edit', { by: 'me' })));
-    await allowed(setDoc(doc(s1, 'audit', newId('a')), auditData('t', S1)));
-    await denied(setDoc(doc(blocked, 'audit', newId('a')), auditData('t', BLOCKED)));
-    await denied(setDoc(doc(stranger, 'audit', newId('a')), auditData('t', STRANGER)));
+  it('staff audit needs by.uid == own uid, real name and at == server time (checked together with a real change)', async () => {
+    const mk = async (over) => { const id = newId('a'); await seedTxn(id, billDoc(S1)); return { id, over }; };
+    const run = (db, uid, id, over) => {
+      const b = writeBatch(db);
+      b.update(doc(db, 'transactions', id), { total: 7, updatedAt: serverTimestamp(), auditSeq: 1 });
+      b.set(doc(db, 'audit', `${id}_1`), auditData(id, uid, 'edit', over));
+      return b.commit();
+    };
+    for (const over of [{ by: me(S2, 'N') }, { at: Timestamp.now() }, { at: hoursAgo(5) }, { action: 'hack' }, { by: 'me' }, { by: { uid: S1, name: 'Owner' } }, { extra: 1 }]) {
+      const { id } = await mk(); await denied(run(s1, S1, id, over));
+    }
+    const { id } = await mk(); await allowed(run(s1, S1, id, {}));
+  });
+  it('an audit record cannot be created alone (no change), cannot be pre-created, cannot be for a wrong seq or id', async () => {
+    const id = newId('a'); await seedTxn(id, billDoc(S1));
+    await denied(setDoc(doc(s1, 'audit', `${id}_1`), auditData(id, S1)));     // no matching change
+    await denied(setDoc(doc(s1, 'audit', `${id}_99999`), auditData(id, S1)));  // pre-created future id
+    await denied(setDoc(doc(s1, 'audit', 'anything'), auditData(id, S1)));     // free id
+    await denied(setDoc(doc(owner, 'audit', `${id}_1`), auditData(id, OWNER))); // even the owner: needs the change in the same save
+    // after the failed attempts the owner and staff can still edit normally (no lock-out)
+    await allowed(editBatch(owner, OWNER, id, { total: 5 }));
+    // audit for a txn whose seq did not move
+    const id2 = newId('a'); await seedTxn(id2, billDoc(S1));
+    const b = writeBatch(s1); b.update(doc(s1, 'transactions', id2), { total: 3, updatedAt: serverTimestamp(), auditSeq: 1 });
+    b.set(doc(s1, 'audit', `${id2}_2`), auditData(id2, S1)); await denied(b.commit());
   });
   it('owner can write audit and read it', async () => {
-    const id = newId('a');
-    await allowed(setDoc(doc(owner, 'audit', id), auditData('t', OWNER, 'restore')));
-    expect((await getDoc(doc(owner, 'audit', id))).data().action).toBe('restore');
+    const id = newId('a'); await seedTxn(id, billDoc(S1));
+    await allowed(editBatch(owner, OWNER, id, { total: 4 }, { action: 'restore' }));
+    expect((await getDoc(doc(owner, 'audit', `${id}_1`))).data().action).toBe('restore');
   });
 });
 
@@ -475,15 +505,15 @@ describe('real api.js flows', () => {
     api.setActor({ uid: S1, name: 'Staff One', role: 'staff' });
     const pid = 'apiparty2';
     await setDoc(doc(owner, 'parties', pid), { name: 'Api Party 2', outstanding: 0, depositBalance: 0, openingBalance: 0, openingDeposit: 0, jarBalance: {} });
-    const r = await api.createBill({ type: 'bill', partyId: pid, partyName: 'Api Party 2', dateKey: DAY, lines: [{ itemId: 'item1', itemName: 'Water', jarTypeId: J, qty: 2, rate: 4000, amount: 8000, jarGiven: true }], subTotal: 8000, discount: 0, extraCharge: 0, total: 8000, note: '', depositAmount: 10000, depositJarTypeId: J, returns: { [J]: 1 } });
+    const r = await api.createBill({ type: 'bill', partyId: pid, partyName: 'Api Party 2', dateKey: TODAY, lines: [{ itemId: 'item1', itemName: 'Water', jarTypeId: J, qty: 2, rate: 4000, amount: 8000, jarGiven: true }], subTotal: 8000, discount: 0, extraCharge: 0, total: 8000, note: '', depositAmount: 10000, depositJarTypeId: J, returns: { [J]: 1 } });
     expect((await getDoc(doc(owner, 'transactions', r.id))).data().createdBy.uid).toBe(S1);
     let party = (await getDoc(doc(owner, 'parties', pid))).data();
     expect(party.outstanding).toBe(8000);
     expect(party.depositBalance).toBe(10000);
 
-    const rec = await api.createEntry({ type: 'receipt', partyId: pid, partyName: 'Api Party 2', dateKey: DAY, amount: 500, mode: 'UPI', reference: '', note: '' });
+    const rec = await api.createEntry({ type: 'receipt', partyId: pid, partyName: 'Api Party 2', dateKey: TODAY, amount: 500, mode: 'UPI', reference: '', note: '' });
     expect((await getDoc(doc(owner, 'transactions', rec.id))).data().verified).toBe(false);
-    const jr = await api.createEntry({ type: 'jarReturn', partyId: pid, partyName: 'Api Party 2', dateKey: DAY, jarTypeId: J, qty: 1, note: '' });
+    const jr = await api.createEntry({ type: 'jarReturn', partyId: pid, partyName: 'Api Party 2', dateKey: TODAY, jarTypeId: J, qty: 1, note: '' });
     expect(jr.id).toBeTruthy();
 
     // edit own bill (total 8000 -> 9000), balance delta applied
@@ -499,7 +529,7 @@ describe('real api.js flows', () => {
     await expect(api.verifyReceipt({ id: rec.id })).rejects.toMatchObject({ code: 'permission-denied' });
     await expect(api.softDeleteTxn({ id: rec.id })).rejects.toMatchObject({ code: 'permission-denied' });
     await expect(api.createParty({ name: 'Nope', phone: '', address: '', notes: '', active: true, openingBalance: 0, openingJars: {}, openingDeposit: 0, jarRates: {}, itemRates: {} })).rejects.toMatchObject({ code: 'permission-denied' });
-    await expect(api.createEntry({ type: 'adjustment', partyId: pid, partyName: 'x', dateKey: DAY, amount: 100, note: '' })).rejects.toMatchObject({ code: 'permission-denied' });
+    await expect(api.createEntry({ type: 'adjustment', partyId: pid, partyName: 'x', dateKey: TODAY, amount: 100, note: '' })).rejects.toMatchObject({ code: 'permission-denied' });
 
     // delete own bill with the linked entries, then restore is denied
     await api.softDeleteTxn({ id: r.id }, { withLinked: true });
@@ -518,4 +548,56 @@ describe('real api.js flows', () => {
     await seedTxn(mineBill, billDoc(S1, { partyId: pid }));
     await expect(api2.updateTxn({ id: mineBill }, { note: 'steal' })).rejects.toMatchObject({ code: 'permission-denied' });
   }, 120000);
+});
+
+describe('hardening from the security review', () => {
+  it('stats: staff cannot overwrite or create arbitrary stats, only small increments / first daily doc', async () => {
+    await denied(setDoc(doc(s1, 'stats', 'summary'), { totalOutstanding: 999999999999, totalDepositHeld: 0 })); // overwrite = big delta
+    await denied(setDoc(doc(s1, 'stats', 'evil'), { totalOutstanding: 1 }));
+    await denied(setDoc(doc(s1, 'stats', 'daily_2026-11-05'), { dateKey: '2026-11-05', sales: 1, collection: 0, billsCount: 1, junk: 'x'.repeat(1000) }));
+    await allowed(setDoc(doc(s1, 'stats', 'summary'), { totalOutstanding: increment(100) }, { merge: true }));
+    await denied(setDoc(doc(s1, 'stats', 'summary'), { totalOutstanding: increment(60000000) }, { merge: true }));
+    await denied(setDoc(doc(s1, 'stats', 'summary'), { totalJarsOut: 'str' }, { merge: true }));
+    // the owner can still add the normal way afterwards (counter not poisoned)
+    await allowed(setDoc(doc(owner, 'stats', 'summary'), { totalOutstanding: increment(20000) }, { merge: true }));
+  });
+  it('parties: staff lastTxnAt must be the server time and jarBalance a small map', async () => {
+    await denied(setDoc(doc(s1, 'parties', P), { lastTxnAt: 'yesterday' }, { merge: true }));
+    await denied(setDoc(doc(s1, 'parties', P), { lastTxnAt: Timestamp.fromMillis(0) }, { merge: true }));
+    await denied(setDoc(doc(s1, 'parties', P), { lastTxnAt: serverTimestamp(), jarBalance: Object.fromEntries(Array.from({ length: 40 }, (_, i) => [`j${i}`, 1])) }, { merge: true }));
+    await allowed(setDoc(doc(s1, 'parties', P), { lastTxnAt: serverTimestamp(), jarBalance: { [J]: increment(1) } }, { merge: true }));
+  });
+  it('staff edit cannot rewrite bill number, links, dates far from today, deletedAt, or edit a deleted entry', async () => {
+    const id = newId('h'); await seedTxn(id, billDoc(S1, { billNo: '00077', billSeq: 77, linkedBillId: 'x' }));
+    for (const patch of [{ billNo: '00001' }, { billSeq: 1 }, { linkedBillId: 'other' }, { dateKey: '2019-01-01', date: Timestamp.fromDate(new Date('2019-01-01')) }, { verifiedBy: { uid: S1, name: 'Owner' } }]) {
+      await denied(editBatch(s1, S1, id, patch));
+    }
+    await allowed(editBatch(s1, S1, id, { total: 123 }));
+    const dead = newId('h'); await seedTxn(dead, billDoc(S1, { deleted: true }));
+    await denied(editBatch(s1, S1, dead, { total: 5 }));
+  });
+  it('staff create: bad name/size/party, extra createdBy keys and far dates are denied', async () => {
+    await denied(setDoc(doc(s1, 'transactions', newId('h')), jr(S1, { partyName: 'x'.repeat(5000) })));
+    await denied(setDoc(doc(s1, 'transactions', newId('h')), jr(S1, { partyId: 'ghost-party' })));
+    await denied(setDoc(doc(s1, 'transactions', newId('h')), jr(S1, { createdBy: { uid: S1, name: 'Staff One', role: 'admin' } })));
+    await denied(setDoc(doc(s1, 'transactions', newId('h')), jr(S1, { date: Timestamp.fromDate(new Date('2020-01-01')), dateKey: '2020-01-01' })));
+    await denied(setDoc(doc(s1, 'transactions', newId('h')), { ...jr(S1), type: 'receipt', amount: 100, verified: false, verifiedBy: { uid: S1, name: 'x' } }));
+    await denied(setDoc(doc(s1, 'transactions', newId('h')), { ...jr(S1), type: 'receipt', amount: 999999999, verified: false }));
+    await allowed(setDoc(doc(s1, 'transactions', newId('h')), jr(S1)));
+  });
+  it('a bill must use the current bill number and move the counter in the same save', async () => {
+    const sRef = doc(s1, 'settings', 'main');
+    // wrong billSeq (not the current counter)
+    await denied(runTransaction(s1, async (tx) => { const seq = (await tx.get(sRef)).data().nextBillNo; tx.set(doc(s1, 'transactions', newId('h')), billDoc(S1, { billSeq: seq + 5 })); tx.update(sRef, { nextBillNo: seq + 1 }); }));
+    // counter not moved
+    await denied(runTransaction(s1, async (tx) => { const seq = (await tx.get(sRef)).data().nextBillNo; tx.set(doc(s1, 'transactions', newId('h')), billDoc(S1, { billSeq: seq })); }));
+    await allowed(staffBill(s1, S1, {}));
+  });
+  it('the owner is never locked out by someone pre-creating audit ids', async () => {
+    const id = newId('h'); await seedTxn(id, billDoc(S1));
+    await denied(setDoc(doc(s1, 'audit', `${id}_1`), auditData(id, S1)));
+    await denied(setDoc(doc(s1, 'audit', `${id}_99999`), auditData(id, S1)));
+    await allowed(editBatch(owner, OWNER, id, { total: 9 }));
+    await allowed(editBatch(owner, OWNER, id, { total: 10 }, { seq: 2 }));
+  });
 });

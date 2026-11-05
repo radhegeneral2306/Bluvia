@@ -186,11 +186,11 @@ export default {
     'txn.editLeft': 'बदलाव के {n} मिनट बाकी',
     'txn.bal': 'बाकी {amt}',
 
-    'upi.title': 'UPI QR',
+    'upi.title': 'UPI QR कोड',
     'upi.missing': 'UPI ID नहीं है',
     'upi.setFirst': 'पहले सेटिंग में UPI ID डालो',
     'upi.missingHint': 'QR बनाने के लिए सेटिंग में अपनी UPI ID डालनी पड़ेगी।',
-    'upi.qrAlt': 'UPI QR {amt}',
+    'upi.qrAlt': 'UPI QR कोड {amt}',
     'upi.making': 'QR बन रहा है',
     'upi.customerWrites': 'रकम ग्राहक खुद डालेगा',
     'upi.remark': 'रिमार्क: {text}',
